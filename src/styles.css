@@ -196,14 +196,21 @@ input:focus { border-color: #2ec4b6; box-shadow: 0 0 0 3px rgba(46,196,182,.12);
   .ammo-number { font-size: 24px; }
   .in-game-host { right: 14px; bottom: 82px; }
   .mobile-controls { display: block; position: absolute; inset: 0; pointer-events: none; }
-  .touch-pad { position: absolute; bottom: calc(74px + env(safe-area-inset-bottom)); width: 124px; height: 124px; border: 1px solid rgba(162,220,222,.2); border-radius: 50%; background: rgba(9,27,42,.25); pointer-events: auto; touch-action: none; }
+  .touch-pad { position: absolute; bottom: calc(74px + env(safe-area-inset-bottom)); width: 124px; height: 124px; border: 1px solid rgba(162,220,222,.2); border-radius: 50%; background: rgba(9,27,42,.25); pointer-events: auto; touch-action: none; transition: border-color .15s, background .15s, box-shadow .15s; }
   .left-pad { left: max(16px, env(safe-area-inset-left)); }
   .right-pad { right: max(16px, env(safe-area-inset-right)); }
   .touch-pad span { position: absolute; inset: 36px; border-radius: 50%; border: 1px solid rgba(162,220,222,.28); background: rgba(46,196,182,.12); }
+  .touch-pad.active { border-color: rgba(46,196,182,.75); background: rgba(46,196,182,.16); box-shadow: 0 0 22px rgba(46,196,182,.18); }
+  .touch-pad .stick-knob { left: 50%; top: 50%; inset: auto; width: 48px; height: 48px; transform: translate(-50%, -50%); transition: transform .08s ease-out, background .15s, border-color .15s; }
+  .touch-pad.active .stick-knob { background: rgba(46,196,182,.26); border-color: rgba(162,220,222,.65); }
   .touch-pad b { position: absolute; bottom: 10px; left: 0; right: 0; color: rgba(181,219,222,.55); text-align: center; font: 8px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; }
   .touch-buttons { position: absolute; left: 50%; right: auto; bottom: calc(92px + env(safe-area-inset-bottom)); display: grid; gap: 10px; transform: translateX(-50%); pointer-events: auto; }
-  .touch-buttons button { width: 64px; height: 64px; color: #b7d5d8; border: 1px solid rgba(162,220,222,.35); border-radius: 50%; background: rgba(9,27,42,.65); font: 8px ui-monospace, SFMono-Regular, Menlo, monospace; touch-action: none; -webkit-tap-highlight-color: transparent; }
+  .touch-buttons button { width: 64px; height: 64px; color: #b7d5d8; border: 1px solid rgba(162,220,222,.35); border-radius: 50%; background: rgba(9,27,42,.65); font: 8px ui-monospace, SFMono-Regular, Menlo, monospace; touch-action: none; -webkit-tap-highlight-color: transparent; transition: transform .1s, background .15s, border-color .15s; }
+  .touch-buttons button.active { transform: scale(.94); background: rgba(46,196,182,.34); border-color: #2ec4b6; }
+  .touch-buttons .shoot-button { color: #ffb0bf; border-color: rgba(255,77,109,.5); }
+  .touch-buttons .shoot-button.active { background: rgba(255,77,109,.35); border-color: #ff4d6d; }
   .touch-buttons .boost-button { color: #ffe66d; border-color: rgba(255,230,109,.4); }
+  .touch-buttons .boost-button.active { background: rgba(255,230,109,.25); border-color: #ffe66d; }
 }
 @media (max-height: 760px) and (min-width: 761px) {
   .join-shell { align-items: start; padding-top: 28px; padding-bottom: 42px; }

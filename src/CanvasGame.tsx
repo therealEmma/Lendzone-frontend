@@ -1,4 +1,4 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Socket } from 'socket.io-client';
 import { GameSnapshot, InputCommand, PLATFORM_LAYOUT, PlayerSnapshot, WORLD } from './shared/types';
 import { gameAudio } from './audio';
@@ -114,7 +114,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
         left: left || mobile.left,
         right: right || mobile.right,
         jump: up || mobile.jump,
-        jetpack: keys.has('shift') || mobile.jetpack,
+        jetpack: keys.has('arrowup') || keys.has('shift') || mobile.jetpack,
         shoot: keys.has('x') || mouseRef.current.down || mobile.shoot,
         reload: inputRef.current.reload,
         aimAngle: mouseRef.current.active ? getMouseAim(snapshotRef.current, localId, cameraRef.current, mouseRef.current.x, mouseRef.current.y, canvasRef.current) : mobile.shoot ? mobile.aimAngle : keyboardAimAngle,
@@ -271,6 +271,7 @@ function drawCrosshair(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement,
 
 function MobileControls({ onChange }: { onChange: (value: MobileInput) => void }) {
   const state = useRef<MobileInput>({ ...EMPTY_MOBILE });
+  const [visual, setVisual] = useState({ left: false, right: false, moveX: 0, moveY: 0, aimX: 0, aimY: 0, shoot: false, jump: false, jetpack: false });
   const leftPad = useRef<HTMLDivElement>(null);
   const rightPad = useRef<HTMLDivElement>(null);
   const pointers = useRef({ left: null as number | null, right: null as number | null });
@@ -284,12 +285,29 @@ function MobileControls({ onChange }: { onChange: (value: MobileInput) => void }
     const nx = Math.max(-1, Math.min(1, dx / radius));
     const ny = Math.max(-1, Math.min(1, dy / radius));
     gameAudio.unlock();
-    if (side === 'left') { state.current.left = nx < -0.18; state.current.right = nx > 0.18; }
-    else { state.current.aimAngle = Math.atan2(ny, nx); state.current.shoot = Math.hypot(nx, ny) > 0.18; }
+    if (side === 'left') {
+      state.current.left = nx < -0.18;
+      state.current.right = nx > 0.18;
+      setVisual((current) => ({ ...current, left: state.current.left, right: state.current.right, moveX: nx, moveY: ny }));
+    } else {
+      state.current.aimAngle = Math.atan2(ny, nx);
+      setVisual((current) => ({ ...current, aimX: nx, aimY: ny }));
+    }
     onChange({ ...state.current });
   };
-  const releasePad = (side: 'left' | 'right') => { pointers.current[side] = null; if (side === 'left') { state.current.left = false; state.current.right = false; } else state.current.shoot = false; onChange({ ...state.current }); };
+  const releasePad = (side: 'left' | 'right') => {
+    pointers.current[side] = null;
+    if (side === 'left') {
+      state.current.left = false;
+      state.current.right = false;
+      setVisual((current) => ({ ...current, left: false, right: false, moveX: 0, moveY: 0 }));
+    } else {
+      setVisual((current) => ({ ...current, aimX: 0, aimY: 0 }));
+    }
+    onChange({ ...state.current });
+  };
   const pointerDown = (side: 'left' | 'right', event: ReactPointerEvent<HTMLDivElement>) => { event.preventDefault(); pointers.current[side] = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); updatePad(side, event); };
-  const button = (key: 'jump' | 'jetpack', value: boolean) => { gameAudio.unlock(); state.current[key] = value; onChange({ ...state.current }); };
-  return <div className="mobile-controls"><div className="touch-pad left-pad" aria-label="Move" ref={leftPad} onPointerDown={(event) => pointerDown('left', event)} onPointerMove={(event) => { if (pointers.current.left === event.pointerId) updatePad('left', event); }} onPointerUp={() => releasePad('left')} onPointerCancel={() => releasePad('left')}><span /><b>MOVE</b></div><div className="touch-pad right-pad" aria-label="Aim and fire" ref={rightPad} onPointerDown={(event) => pointerDown('right', event)} onPointerMove={(event) => { if (pointers.current.right === event.pointerId) updatePad('right', event); }} onPointerUp={() => releasePad('right')} onPointerCancel={() => releasePad('right')}><span /><b>AIM / FIRE</b></div><div className="touch-buttons"><button onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); button('jump', true); }} onPointerUp={() => button('jump', false)} onPointerCancel={() => button('jump', false)}>JUMP</button><button className="boost-button" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); button('jetpack', true); }} onPointerUp={() => button('jetpack', false)} onPointerCancel={() => button('jetpack', false)}>BOOST</button></div></div>;
+  const button = (key: 'shoot' | 'jump' | 'jetpack', value: boolean) => { gameAudio.unlock(); state.current[key] = value; setVisual((current) => ({ ...current, [key]: value })); onChange({ ...state.current }); };
+  const stickStyle = (x: number, y: number) => ({ transform: `translate(-50%, -50%) translate(${x * 30}px, ${y * 30}px)` });
+  return <div className="mobile-controls"><div className={`touch-pad left-pad ${visual.left || visual.right ? 'active' : ''}`} aria-label="Move" ref={leftPad} onPointerDown={(event) => pointerDown('left', event)} onPointerMove={(event) => { if (pointers.current.left === event.pointerId) updatePad('left', event); }} onPointerUp={() => releasePad('left')} onPointerCancel={() => releasePad('left')}><span className="stick-knob" style={stickStyle(visual.left || visual.right ? visual.moveX : 0, visual.left || visual.right ? visual.moveY : 0)} /><b>MOVE</b></div><div className={`touch-pad right-pad ${visual.aimX || visual.aimY ? 'active' : ''}`} aria-label="Aim" ref={rightPad} onPointerDown={(event) => pointerDown('right', event)} onPointerMove={(event) => { if (pointers.current.right === event.pointerId) updatePad('right', event); }} onPointerUp={() => releasePad('right')} onPointerCancel={() => releasePad('right')}><span className="stick-knob" style={stickStyle(visual.aimX, visual.aimY)} /><b>AIM</b></div><div className="touch-buttons"><button className={`shoot-button ${visual.shoot ? 'active' : ''}`} onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); button('shoot', true); }} onPointerUp={() => button('shoot', false)} onPointerCancel={() => button('shoot', false)}>SHOOT</button><button className={visual.jump ? 'active' : ''} onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); button('jump', true); }} onPointerUp={() => button('jump', false)} onPointerCancel={() => button('jump', false)}>JUMP</button><button className={`boost-button ${visual.jetpack ? 'active' : ''}`} onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); button('jetpack', true); }} onPointerUp={() => button('jetpack', false)} onPointerCancel={() => button('jetpack', false)}>BOOST</button></div></div>;
 }

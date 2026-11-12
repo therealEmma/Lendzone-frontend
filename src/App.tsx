@@ -249,7 +249,7 @@ function GameScreen({ socket, snapshot, session, isHost, onHostAction, onLeave, 
   const [showControls, setShowControls] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
-    const timer = window.setTimeout(() => setShowControls(false), 15_000);
+    const timer = window.setTimeout(() => setShowControls(false), 10_000);
     return () => window.clearTimeout(timer);
   }, []);
   useEffect(() => {
@@ -286,13 +286,13 @@ function GameMenu({ isHost, secret, setSecret, onHostAction, onClose, onLeave }:
 
 function ControlsBrief() {
   return <aside className="controls-brief panel-glass" aria-label="Game controls">
-    <div className="controls-brief-title">CONTROLS // 15 SEC</div>
+    <div className="controls-brief-title">CONTROLS // 10 SEC</div>
     <div className="controls-grid">
       <div className="control-row"><kbd>← →</kbd><span>MOVE / TURN</span></div>
-      <div className="control-row"><kbd>↑</kbd><span>JUMP / AIM UP</span></div>
+      <div className="control-row"><kbd>↑</kbd><span>JUMP + JETPACK</span></div>
       <div className="control-row"><kbd>↓</kbd><span>AIM DOWN</span></div>
       <div className="control-row"><kbd>X</kbd><span>FIRE</span></div>
-      <div className="control-row"><kbd>SHIFT</kbd><span>JETPACK BOOST</span></div>
+      <div className="control-row"><kbd>SHIFT</kbd><span>BOOST (ALT)</span></div>
       <div className="control-row"><kbd>MOUSE</kbd><span>AIM / FIRE</span></div>
       <div className="control-row"><kbd>R</kbd><span>RELOAD</span></div>
     </div>
