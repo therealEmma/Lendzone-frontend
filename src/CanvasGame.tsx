@@ -62,6 +62,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
     }
     if (snapshot.phase === 'COUNTDOWN' && snapshot.countdown !== audioState.countdown) gameAudio.countdown();
     if (snapshot.phase === 'PLAYING' && audioState.phase !== 'PLAYING') gameAudio.roundStart();
+    if (snapshot.phase === 'RESULTS' && audioState.phase !== 'RESULTS') gameAudio.stopMusic();
     audioState.countdown = snapshot.countdown;
     audioState.phase = snapshot.phase;
     audioState.projectileIds = nextProjectileIds;
@@ -185,7 +186,6 @@ function drawScene(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, sna
   ctx.scale(camera.zoom, camera.zoom);
   drawWorldBackdrop(ctx, camera, width, height);
   drawPlatforms(ctx, snapshot.platforms ?? PLATFORM_LAYOUT);
-  drawCombatProps(ctx);
   for (const projectile of snapshot.projectiles) drawProjectile(ctx, projectile.x, projectile.y, projectile.vx, projectile.vy);
   for (const player of snapshot.players) {
     if (!player.alive) continue;
@@ -216,20 +216,6 @@ function drawWorldBackdrop(ctx: CanvasRenderingContext2D, camera: { x: number; y
 
 function drawPlatforms(ctx: CanvasRenderingContext2D, platforms: typeof PLATFORM_LAYOUT): void {
   for (const platform of platforms) {
-    if (platform.kind === 'cover') {
-      ctx.fillStyle = '#263949';
-      ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
-      ctx.fillStyle = '#d56b4d';
-      ctx.fillRect(platform.x, platform.y, platform.width, 5);
-      ctx.strokeStyle = 'rgba(230, 177, 116, .55)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(platform.x + 4, platform.y + 7, platform.width - 8, platform.height - 12);
-      for (let y = platform.y + 22; y < platform.y + platform.height - 8; y += 22) {
-        ctx.fillStyle = 'rgba(5, 13, 24, .42)';
-        ctx.fillRect(platform.x + 9, y, platform.width - 18, 4);
-      }
-      continue;
-    }
     ctx.fillStyle = platform.kind === 'ground' ? '#162e42' : platform.kind === 'wall' ? '#132638' : '#1b3950';
     ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
     ctx.fillStyle = platform.kind === 'ground' ? '#2ec4b6' : platform.kind === 'wall' ? '#d56b4d' : '#49a5ad';
@@ -237,38 +223,6 @@ function drawPlatforms(ctx: CanvasRenderingContext2D, platforms: typeof PLATFORM
     ctx.fillStyle = 'rgba(5, 13, 24, 0.5)';
     for (let x = platform.x + 18; x < platform.x + platform.width - 8; x += 42) ctx.fillRect(x, platform.y + 12, 22, 3);
   }
-}
-
-function drawCombatProps(ctx: CanvasRenderingContext2D): void {
-  ctx.save();
-  ctx.font = '800 18px ui-monospace, SFMono-Regular, Menlo, monospace';
-  ctx.letterSpacing = '3px';
-  ctx.fillStyle = 'rgba(216, 232, 237, .22)';
-  ctx.fillText('REDLINE OUTPOST // SECTOR 07', 120, 1120);
-  ctx.fillStyle = '#d56b4d';
-  ctx.fillRect(1010, 1078, 90, 6);
-  ctx.fillStyle = '#ffe66d';
-  ctx.fillRect(1010, 1084, 90, 4);
-  ctx.fillStyle = 'rgba(255, 230, 109, .6)';
-  ctx.font = '700 12px ui-monospace, SFMono-Regular, Menlo, monospace';
-  ctx.fillText('LIVE FIRE', 1020, 1108);
-  for (const x of [770, 1440, 1980]) {
-    ctx.fillStyle = '#203a4b';
-    ctx.fillRect(x, 1070, 80, 50);
-    ctx.fillStyle = '#d56b4d';
-    ctx.fillRect(x, 1070, 80, 5);
-    ctx.fillStyle = 'rgba(5,13,24,.55)';
-    ctx.fillRect(x + 12, 1089, 56, 5);
-    ctx.fillRect(x + 12, 1103, 38, 5);
-  }
-  ctx.strokeStyle = 'rgba(213,107,77,.55)';
-  ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(80, 865); ctx.lineTo(80, 790); ctx.lineTo(135, 790); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(2260, 785); ctx.lineTo(2260, 710); ctx.lineTo(2315, 710); ctx.stroke();
-  ctx.fillStyle = '#d56b4d';
-  ctx.beginPath(); ctx.moveTo(80, 790); ctx.lineTo(112, 805); ctx.lineTo(80, 820); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(2260, 710); ctx.lineTo(2292, 725); ctx.lineTo(2260, 740); ctx.closePath(); ctx.fill();
-  ctx.restore();
 }
 
 function drawProjectile(ctx: CanvasRenderingContext2D, x: number, y: number, vx: number, vy: number): void {

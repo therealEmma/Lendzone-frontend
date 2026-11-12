@@ -7,7 +7,7 @@ export interface Platform {
   y: number;
   width: number;
   height: number;
-  kind: 'ground' | 'platform' | 'wall' | 'cover';
+  kind: 'ground' | 'platform' | 'wall';
 }
 
 export interface InputCommand {
@@ -136,13 +136,6 @@ export const PLATFORM_LAYOUT: Platform[] = [
   { x: 0, y: 1140, width: 2400, height: 60, kind: 'ground' },
   { x: 0, y: 0, width: 36, height: 1140, kind: 'wall' },
   { x: 2364, y: 0, width: 36, height: 1140, kind: 'wall' },
-  { x: 245, y: 1020, width: 105, height: 120, kind: 'cover' },
-  { x: 610, y: 1015, width: 90, height: 125, kind: 'cover' },
-  { x: 1165, y: 1030, width: 130, height: 110, kind: 'cover' },
-  { x: 1700, y: 1015, width: 110, height: 125, kind: 'cover' },
-  { x: 2210, y: 1000, width: 90, height: 140, kind: 'cover' },
-  { x: 510, y: 790, width: 78, height: 85, kind: 'cover' },
-  { x: 1510, y: 805, width: 90, height: 165, kind: 'cover' },
   { x: 115, y: 965, width: 430, height: 28, kind: 'platform' },
   { x: 690, y: 875, width: 440, height: 28, kind: 'platform' },
   { x: 1285, y: 975, width: 390, height: 28, kind: 'platform' },

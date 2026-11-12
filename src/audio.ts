@@ -3,6 +3,9 @@ type AudioNodeFactory = typeof window.AudioContext;
 let context: AudioContext | null = null;
 let master: GainNode | null = null;
 let noiseBuffer: AudioBuffer | null = null;
+let musicBus: GainNode | null = null;
+let musicTimer: number | null = null;
+let musicStep = 0;
 
 function getContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -30,9 +33,9 @@ function unlock(): void {
   if (ctx?.state === 'suspended') void ctx.resume();
 }
 
-function tone(startFrequency: number, endFrequency: number, duration: number, type: OscillatorType, volume: number, delay = 0): void {
+function tone(startFrequency: number, endFrequency: number, duration: number, type: OscillatorType, volume: number, delay = 0, destination: AudioNode | null = master): void {
   const ctx = getContext();
-  if (!ctx || !master) return;
+  if (!ctx || !destination) return;
   const start = ctx.currentTime + delay;
   const oscillator = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -42,35 +45,70 @@ function tone(startFrequency: number, endFrequency: number, duration: number, ty
   gain.gain.setValueAtTime(0.0001, start);
   gain.gain.exponentialRampToValueAtTime(volume, start + 0.006);
   gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  oscillator.connect(gain).connect(master);
+  oscillator.connect(gain).connect(destination);
   oscillator.start(start);
   oscillator.stop(start + duration + 0.02);
 }
 
-function noise(duration: number, volume: number, delay = 0): void {
+function noise(duration: number, volume: number, delay = 0, destination: AudioNode | null = master): void {
   const ctx = getContext();
-  if (!ctx || !master) return;
+  if (!ctx || !destination) return;
   const start = ctx.currentTime + delay;
   const source = ctx.createBufferSource();
   const gain = ctx.createGain();
   source.buffer = ensureNoise(ctx);
   gain.gain.setValueAtTime(volume, start);
   gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  source.connect(gain).connect(master);
+  source.connect(gain).connect(destination);
   source.start(start);
   source.stop(start + duration);
+}
+
+function musicTick(): void {
+  const ctx = getContext();
+  if (!ctx || !musicBus) return;
+  const bassline = [55, 55, 65.41, 55, 73.42, 65.41, 55, 49];
+  const pulse = [220, 261.63, 329.63, 392, 329.63, 261.63, 220, 196];
+  const bass = bassline[musicStep % bassline.length];
+  const lead = pulse[musicStep % pulse.length];
+  tone(bass, bass * 0.96, 0.19, 'sawtooth', 0.075, 0.02, musicBus);
+  tone(lead, lead * 1.02, 0.075, 'square', 0.022, 0.025, musicBus);
+  noise(0.025, 0.018, 0.02, musicBus);
+  if (musicStep % 8 === 4) tone(110, 70, 0.16, 'triangle', 0.045, 0.02, musicBus);
+  musicStep += 1;
+  musicTimer = window.setTimeout(musicTick, 240);
+}
+
+function startMusic(): void {
+  const ctx = getContext();
+  if (!ctx || !master || musicTimer !== null) return;
+  unlock();
+  musicBus = ctx.createGain();
+  musicBus.gain.setValueAtTime(0.7, ctx.currentTime);
+  musicBus.connect(master);
+  musicStep = 0;
+  musicTick();
+}
+
+function stopMusic(): void {
+  if (musicTimer !== null) window.clearTimeout(musicTimer);
+  musicTimer = null;
+  if (musicBus) musicBus.disconnect();
+  musicBus = null;
 }
 
 export const gameAudio = {
   unlock,
   gunshot() {
     unlock();
-    noise(0.055, 0.12);
-    tone(150, 48, 0.075, 'sawtooth', 0.08);
+    noise(0.07, 0.18);
+    tone(190, 42, 0.09, 'sawtooth', 0.11);
+    tone(920, 180, 0.035, 'square', 0.045, 0.005);
   },
   hit() {
     unlock();
-    tone(210, 95, 0.09, 'square', 0.07);
+    noise(0.045, 0.06);
+    tone(210, 72, 0.11, 'square', 0.09);
   },
   elimination() {
     unlock();
@@ -97,8 +135,12 @@ export const gameAudio = {
   },
   roundStart() {
     unlock();
-    tone(390, 520, 0.12, 'triangle', 0.06);
-    tone(520, 780, 0.18, 'triangle', 0.06, 0.11);
+    tone(260, 520, 0.12, 'triangle', 0.07);
+    tone(520, 980, 0.2, 'sawtooth', 0.06, 0.11);
+    startMusic();
+  },
+  stopMusic() {
+    stopMusic();
   },
   ui() {
     unlock();
