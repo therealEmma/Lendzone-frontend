@@ -49,18 +49,14 @@ Use the Railway backend URL without a trailing slash, then redeploy Vercel. The 
 
 The Railway backend URL is not the game page. It exposes the API, health check, and Socket.IO connection; the playable page is the Vercel URL.
 
-For a production-style single process:
+To preview the built frontend locally:
 
 ```bash
-cd C:/Users/eozeg/COD/backend
-npm run build
-
-cd ../frontend
 npm run build
 npm start
 ```
 
-The built server lives in `backend/dist` and serves `backend/dist/client`. It exposes `GET /health`. Use a persistent Node.js host with WebSocket support; do not deploy this server as a serverless function.
+The frontend static server listens on `PORT` (or `4173`). The backend remains a separate Node.js service with WebSocket support; do not deploy the backend as a serverless function.
 
 ## Tests and load test
 
