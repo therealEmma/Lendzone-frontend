@@ -9,19 +9,41 @@ The repository is split into `backend/` for the server, physics, shared network 
 Requires Node.js 20+.
 
 ```bash
-cd C:/Users/eozeg/COD
+cd C:/Users/eozeg/COD/backend
 npm install
-copy frontend/.env.example frontend/.env
+copy .env.example .env
+
+cd ../frontend
+npm install
+copy .env.example .env
 npm run dev
 ```
 
-Open `http://localhost:5173` in two or more browser tabs. The first player is shown as the room owner; owner actions still require the `HOST_SECRET` from `frontend/.env`. The owner can set the round duration and room capacity before deployment.
+The frontend and backend are intentionally started separately during development. Use two terminals:
+
+```bash
+# Terminal 1
+cd C:/Users/eozeg/COD/backend
+npm run dev
+
+# Terminal 2
+cd C:/Users/eozeg/COD/frontend
+npm run dev
+```
+
+If you want the old convenience launcher, run `npm run dev:all` from `frontend/` instead.
+
+Open `http://localhost:5173` in two or more browser tabs. The first player is shown as the room owner and can start/manage the room directly; `HOST_SECRET` from `backend/.env` can also be used for remote/admin control. The owner can set the round duration and room capacity before deployment. A round still requires at least two players.
 
 For a production-style single process:
 
 ```bash
+cd C:/Users/eozeg/COD/backend
 npm run build
-npm --prefix frontend start
+
+cd ../frontend
+npm run build
+npm start
 ```
 
 The built server lives in `backend/dist` and serves `backend/dist/client`. It exposes `GET /health`. Use a persistent Node.js host with WebSocket support; do not deploy this server as a serverless function.

@@ -7,13 +7,16 @@ import CanvasGame from './CanvasGame';
 import { gameAudio } from './audio';
 
 const COLORS = ['#ff4d6d', '#ff9f1c', '#ffe66d', '#2ec4b6', '#38bdf8', '#8b5cf6', '#f472b6', '#a3e635', '#fb7185', '#c084fc'];
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || (window.location.port === '5173' ? 'http://localhost:3000' : window.location.origin);
+const DEFAULT_SERVER_URL = window.location.port === '5173'
+  ? `${window.location.protocol}//${window.location.hostname}:3000`
+  : window.location.origin;
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER_URL;
 
 type Notice = { message: string; type: 'info' | 'error' };
 
 export default function App() {
-  const socket = useMemo<Socket>(() => io(SERVER_URL, { transports: ['websocket', 'polling'] }), []);
-  const [connected, setConnected] = useState(false);
+  const socket = useMemo<Socket>(() => io(SERVER_URL, { autoConnect: false, transports: ['websocket', 'polling'], timeout: 5_000 }), []);
+  const [connected, setConnected] = useState(socket.connected);
   const [joined, setJoined] = useState(false);
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
@@ -23,8 +26,18 @@ export default function App() {
   const [joinError, setJoinError] = useState('');
 
   useEffect(() => {
-    const onConnected = () => setConnected(true);
-    const onDisconnect = () => setConnected(false);
+    const onConnect = () => {
+      setConnected(true);
+      setJoinError('');
+    };
+    const onDisconnect = () => {
+      setConnected(false);
+      setJoinError((current) => current || 'Backend disconnected. Start the backend and try again.');
+    };
+    const onConnectError = () => {
+      setConnected(false);
+      setJoinError(`Cannot reach the backend at ${SERVER_URL}. Start it with "npm run dev" from the backend folder.`);
+    };
     const onSession = (payload: SessionPayload) => {
       setSession(payload);
       setJoined(true);
@@ -35,16 +48,25 @@ export default function App() {
       setNotice(next);
       window.setTimeout(() => setNotice(null), 3500);
     };
-    const onError = (next: { message: string }) => setJoinError(next.message);
-    socket.on('connected', onConnected);
+    const onError = (next: { message: string }) => {
+      setJoinError(next.message);
+      setNotice({ message: next.message, type: 'error' });
+      window.setTimeout(() => setNotice((current) => current?.message === next.message ? null : current), 3500);
+    };
+    socket.on('connect', onConnect);
+    socket.on('connected', onConnect);
     socket.on('disconnect', onDisconnect);
+    socket.on('connect_error', onConnectError);
     socket.on('session', onSession);
     socket.on('snapshot', onSnapshot);
     socket.on('notice', onNotice);
     socket.on('errorMessage', onError);
+    socket.connect();
     return () => {
-      socket.off('connected', onConnected);
+      socket.off('connect', onConnect);
+      socket.off('connected', onConnect);
       socket.off('disconnect', onDisconnect);
+      socket.off('connect_error', onConnectError);
       socket.off('session', onSession);
       socket.off('snapshot', onSnapshot);
       socket.off('notice', onNotice);
@@ -71,6 +93,11 @@ export default function App() {
     });
   };
 
+  const retryConnection = useCallback(() => {
+    setJoinError('Reconnecting to the backend...');
+    if (!socket.connected) socket.connect();
+  }, [socket]);
+
   const sendHostAction = useCallback((payload: Omit<HostActionPayload, 'secret'> & { secret: string }) => {
     socket.emit('hostAction', payload);
   }, [socket]);
@@ -84,6 +111,7 @@ export default function App() {
         color={color}
         setColor={setColor}
         onJoin={joinGame}
+        onRetry={retryConnection}
         error={joinError}
       />
     );
@@ -93,7 +121,7 @@ export default function App() {
   const isHost = Boolean(snapshot?.hostId === session.id || session.isHost);
 
   if (phase === 'LOBBY') {
-    return <LobbyScreen snapshot={snapshot} session={session} isHost={isHost} onHostAction={sendHostAction} onLeave={() => socket.disconnect()} />;
+    return <LobbyScreen snapshot={snapshot} session={session} isHost={isHost} notice={notice} onHostAction={sendHostAction} onLeave={() => socket.disconnect()} />;
   }
   if (phase === 'RESULTS') {
     return <ResultsScreen snapshot={snapshot} isHost={isHost} onHostAction={sendHostAction} />;
@@ -112,7 +140,7 @@ export default function App() {
 
 function JoinScreen(props: {
   connected: boolean; name: string; setName: (value: string) => void; color: string; setColor: (value: string) => void;
-  onJoin: () => void; error: string;
+  onJoin: () => void; onRetry: () => void; error: string;
 }) {
   return (
     <main className="screen-shell join-shell">
@@ -134,6 +162,7 @@ function JoinScreen(props: {
           <button className="primary-button" onClick={props.onJoin} disabled={!props.connected}>
             {props.connected ? 'ENTER THE ARENA' : 'CONNECTING...'} <span>↗</span>
           </button>
+          {!props.connected && <button className="text-button connection-retry" onClick={props.onRetry}>RETRY CONNECTION</button>}
           {props.error && <div className="form-error">{props.error}</div>}
         </div>
         <div className="join-footnote"><span className="status-dot" /> No account. No install. Share the link and play.</div>
@@ -147,9 +176,9 @@ function JoinScreen(props: {
   );
 }
 
-function LobbyScreen({ snapshot, session, isHost, onHostAction, onLeave }: {
+function LobbyScreen({ snapshot, session, isHost, notice, onHostAction, onLeave }: {
   snapshot: GameSnapshot | null; session: SessionPayload; isHost: boolean;
-  onHostAction: (payload: HostActionPayload) => void; onLeave: () => void;
+  notice: Notice | null; onHostAction: (payload: HostActionPayload) => void; onLeave: () => void;
 }) {
   const [secret, setSecret] = useState('');
   const [duration, setDuration] = useState(300);
@@ -175,6 +204,7 @@ function LobbyScreen({ snapshot, session, isHost, onHostAction, onLeave }: {
         <div className="lobby-actions"><button className="primary-button wide-button" disabled={isHost && !canDeploy} onClick={() => isHost ? start() : setShowHost(true)}>{isHost ? (canDeploy ? 'START THE ROUND' : 'WAITING FOR 1 MORE PLAYER') : 'I HAVE THE HOST KEY'} <span>→</span></button><div className="lobby-subtext">{isHost ? (canDeploy ? 'You are the room host. Set the pace.' : 'At least 2 operatives are required before deployment.') : 'The host can start the round from this room.'}</div></div>
         <button className="text-button" onClick={() => setShowHost((current) => !current)}>{showHost ? 'Hide host controls' : 'Open host controls'}</button>
         {showHost && <HostControls secret={secret} setSecret={setSecret} duration={duration} setDuration={setDuration} capacity={capacity} setCapacity={setCapacity} onAction={onHostAction} isHost={isHost} playerCount={players.length} />}
+        {notice && <div className={`notice-toast lobby-notice ${notice.type}`}>{notice.message}</div>}
       </section>
     </main>
   );
@@ -185,7 +215,7 @@ function HostControls({ secret, setSecret, duration, setDuration, capacity, setC
   onAction: (payload: HostActionPayload) => void; isHost: boolean; playerCount: number;
 }) {
   const canDeploy = isHost && playerCount >= 2;
-  return <div className="host-controls panel-glass"><div><label className="field-label">OWNER KEY</label><input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="From your .env file" /></div><div><label className="field-label">ROUND SECONDS</label><input type="number" min={30} max={1800} value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></div><div><label className="field-label">MAX PLAYERS</label><input type="number" min={2} max={30} value={capacity} onChange={(event) => setCapacity(Number(event.target.value))} /></div><button className="secondary-button" disabled={!canDeploy} onClick={() => { onAction({ secret, action: 'duration', durationSeconds: duration }); onAction({ secret, action: 'capacity', capacity }); onAction({ secret, action: 'start', durationSeconds: duration }); }}>DEPLOY</button><span className="host-help">{isHost ? (canDeploy ? 'Owner console active. Capacity changes apply before deployment.' : 'Add one more operative before deployment.') : 'Enter the owner key to configure the room.'}</span></div>;
+  return <div className="host-controls panel-glass"><div><label className="field-label">OWNER KEY <small>(optional for room host)</small></label><input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Only needed for remote control" /></div><div><label className="field-label">ROUND SECONDS</label><input type="number" min={30} max={1800} value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></div><div><label className="field-label">MAX PLAYERS</label><input type="number" min={2} max={30} value={capacity} onChange={(event) => setCapacity(Number(event.target.value))} /></div><button className="secondary-button" disabled={!canDeploy} onClick={() => { onAction({ secret, action: 'duration', durationSeconds: duration }); onAction({ secret, action: 'capacity', capacity }); onAction({ secret, action: 'start', durationSeconds: duration }); }}>DEPLOY</button><span className="host-help">{isHost ? (canDeploy ? 'Room host verified. Start when everyone is ready.' : 'Add one more operative before deployment.') : 'Enter the owner key to configure the room.'}</span></div>;
 }
 
 function ResultsScreen({ snapshot, isHost, onHostAction }: { snapshot: GameSnapshot | null; isHost: boolean; onHostAction: (payload: HostActionPayload) => void }) {
