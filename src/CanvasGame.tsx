@@ -340,11 +340,15 @@ function MobileControls({ onChange }: { onChange: (value: MobileInput) => void }
       state.current.aimAngle = 0;
       state.current.aimAngleSet = true;
     }
-    if (key === 'shoot') state.current.shootPulse = 1;
+    // shootPulse is a one-frame event. Keep it out of the persistent mobile
+    // state after emitting it, otherwise a later movement press can replay a
+    // stale tap and fire without the SHOOT button being held.
     state.current[key] = true;
+    const nextState = { ...state.current, shootPulse: key === 'shoot' ? 1 : 0 };
+    if (key === 'shoot') state.current.shootPulse = 0;
     capturePointer(event.currentTarget, event.pointerId);
     setVisual((current) => ({ ...current, [key]: true }));
-    onChange({ ...state.current });
+    onChange(nextState);
   };
   const buttonUp = (key: 'left' | 'right' | 'shoot' | 'jump' | 'jetpack', pointerId: number) => {
     if (pointers.current[key] !== pointerId) return;
