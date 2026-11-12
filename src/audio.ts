@@ -6,6 +6,8 @@ let noiseBuffer: AudioBuffer | null = null;
 type MusicMode = 'lobby' | 'combat';
 let musicMode: MusicMode | null = null;
 let musicPlayer: HTMLAudioElement | null = null;
+const gunshotPool: HTMLAudioElement[] = [];
+let gunshotIndex = 0;
 
 function getContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -64,6 +66,25 @@ function noise(duration: number, volume: number, delay = 0, destination: AudioNo
   source.stop(start + duration);
 }
 
+function playFallbackGunshot(): void {
+  noise(0.07, 0.18);
+  tone(190, 42, 0.09, 'sawtooth', 0.11);
+  tone(920, 180, 0.035, 'square', 0.045, 0.005);
+}
+
+function playGunshotSample(): void {
+  if (typeof window === 'undefined') {
+    playFallbackGunshot();
+    return;
+  }
+  const player = gunshotPool[gunshotIndex] || new Audio('/audio/Gunshot.mp3');
+  if (gunshotPool.length < 6) gunshotPool.push(player);
+  gunshotIndex = (gunshotIndex + 1) % 6;
+  player.volume = 0.62;
+  player.currentTime = 0;
+  void player.play().catch(() => playFallbackGunshot());
+}
+
 function startMusic(mode: MusicMode): void {
   if (typeof window === 'undefined') return;
   if (!musicPlayer) {
@@ -95,9 +116,7 @@ export const gameAudio = {
   unlock,
   gunshot() {
     unlock();
-    noise(0.07, 0.18);
-    tone(190, 42, 0.09, 'sawtooth', 0.11);
-    tone(920, 180, 0.035, 'square', 0.045, 0.005);
+    playGunshotSample();
   },
   hit() {
     unlock();
