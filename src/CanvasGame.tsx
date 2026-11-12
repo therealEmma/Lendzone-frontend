@@ -159,7 +159,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
     return () => { cancelAnimationFrame(frame); window.removeEventListener('resize', resize); };
   }, [localId]);
 
-  return <><canvas className="game-canvas" ref={canvasRef} /><MobileControls onChange={(next) => { mobileRef.current = next; }} /></>;
+  return <><canvas className="game-canvas" ref={canvasRef} /><MobileControls onChange={(next) => { mobileRef.current = next; }} /><div className="orientation-lock" role="status" aria-live="polite"><div className="orientation-lock-card"><div className="orientation-lock-icon">↻</div><strong>ROTATE TO LANDSCAPE</strong><span>Turn your phone sideways for the best controls.</span></div></div></>;
 }
 
 function getMouseAim(snapshot: GameSnapshot | null, localId: string, camera: { x: number; y: number; zoom: number }, x: number, y: number, canvas: HTMLCanvasElement | null): number {

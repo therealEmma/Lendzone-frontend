@@ -148,6 +148,11 @@ input:focus { border-color: #2ec4b6; box-shadow: 0 0 0 3px rgba(46,196,182,.12);
 .in-game-host input { width: 110px; padding: 7px 8px; font-size: 10px; }
 .in-game-host button { color: #a6c0cb; border: 1px solid rgba(129,186,198,.2); background: rgba(7,17,32,.8); padding: 7px 9px; font: 700 9px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .mobile-controls { display: none; z-index: 9; }
+.orientation-lock { display: none; }
+.orientation-lock-card { display: grid; gap: 10px; max-width: 300px; padding: 26px 24px; color: #dff5f5; border: 1px solid rgba(46,196,182,.42); border-radius: 10px; background: rgba(7,17,32,.92); box-shadow: 0 20px 80px rgba(0,0,0,.55), 0 0 35px rgba(46,196,182,.12); text-align: center; }
+.orientation-lock-card strong { color: #2ec4b6; font: 800 12px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
+.orientation-lock-card span { color: #89a7b5; font-size: 13px; line-height: 1.45; }
+.orientation-lock-icon { color: #ffe66d; font-size: 35px; line-height: 1; }
 
 .results-shell { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; text-align: center; }
 .results-glow { position: absolute; width: 560px; height: 560px; border-radius: 50%; background: radial-gradient(circle, rgba(46,196,182,.14), transparent 65%); pointer-events: none; }
@@ -193,6 +198,7 @@ input:focus { border-color: #2ec4b6; box-shadow: 0 0 0 3px rgba(46,196,182,.12);
   .kill-feed { top: 60px; left: 14px; font-size: 9px; max-width: 180px; }
   .player-status { left: 14px; bottom: 15px; width: 145px; padding: 9px; }
   .ammo-status { right: 14px; bottom: 15px; min-width: 110px; padding: 9px; }
+  .player-status, .ammo-status, .leaderboard, .kill-feed { pointer-events: none; }
   .ammo-number { font-size: 24px; }
   .in-game-host { right: 14px; bottom: 82px; }
   .mobile-controls { display: block; position: absolute; inset: 0; pointer-events: none; }
@@ -212,15 +218,32 @@ input:focus { border-color: #2ec4b6; box-shadow: 0 0 0 3px rgba(46,196,182,.12);
   .touch-buttons .boost-button { color: #ffe66d; border-color: rgba(255,230,109,.4); }
   .touch-buttons .boost-button.active { background: rgba(255,230,109,.25); border-color: #ffe66d; }
 }
+@media (pointer: coarse) and (orientation: portrait) {
+  .orientation-lock { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px; background: rgba(3,10,20,.82); backdrop-filter: blur(8px); }
+  .mobile-controls { opacity: .18; }
+}
+@media (pointer: coarse) and (orientation: landscape) {
+  .touch-pad { bottom: calc(18px + env(safe-area-inset-bottom)); width: clamp(116px, 23vw, 154px); height: clamp(116px, 23vw, 154px); }
+  .left-pad { left: max(18px, env(safe-area-inset-left)); }
+  .right-pad { right: max(18px, env(safe-area-inset-right)); }
+  .touch-pad .stick-knob { width: 54px; height: 54px; }
+  .touch-buttons { left: auto; right: max(146px, calc(env(safe-area-inset-right) + 18px)); bottom: calc(18px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(2, clamp(58px, 9vw, 76px)); grid-template-areas: 'shoot shoot' 'jump boost'; gap: 8px; transform: none; }
+  .touch-buttons button { width: clamp(58px, 9vw, 76px); height: clamp(58px, 9vw, 76px); font-size: 9px; }
+  .touch-buttons .shoot-button { grid-area: shoot; justify-self: center; width: clamp(78px, 12vw, 98px); height: clamp(70px, 11vw, 90px); font-size: 10px; }
+  .touch-buttons button:nth-child(2) { grid-area: jump; }
+  .touch-buttons .boost-button { grid-area: boost; }
+  .player-status { left: max(150px, calc(env(safe-area-inset-left) + 132px)); bottom: calc(18px + env(safe-area-inset-bottom)); }
+  .ammo-status { right: max(150px, calc(env(safe-area-inset-right) + 132px)); bottom: calc(18px + env(safe-area-inset-bottom)); }
+}
 @media (max-height: 760px) and (min-width: 761px) {
   .join-shell { align-items: start; padding-top: 28px; padding-bottom: 42px; }
   .lobby-content { padding-top: 42px; }
 }
 @media (max-height: 560px) and (orientation: landscape) {
-  .mobile-controls .touch-pad { bottom: 14px; width: 105px; height: 105px; }
+  .mobile-controls .touch-pad { bottom: calc(12px + env(safe-area-inset-bottom)); width: clamp(104px, 22vw, 132px); height: clamp(104px, 22vw, 132px); }
   .mobile-controls .left-pad { left: 12px; }
   .mobile-controls .right-pad { right: 12px; }
-  .touch-buttons { right: auto; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%); }
+  .touch-buttons { right: max(128px, calc(env(safe-area-inset-right) + 14px)); left: auto; bottom: calc(12px + env(safe-area-inset-bottom)); transform: none; }
   .player-status, .ammo-status { bottom: calc(12px + env(safe-area-inset-bottom)); }
   .player-status { left: max(145px, env(safe-area-inset-left)); }
   .ammo-status { right: max(145px, env(safe-area-inset-right)); }
