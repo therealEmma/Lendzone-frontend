@@ -72,7 +72,7 @@ The smoke test verifies two clients can join and enter the PLAYING state. The lo
 
 Desktop: Arrow Left/Right move and turn, Arrow Up jumps and activates the jetpack, Arrow Down aims down, `X` fires, Shift boosts, mouse aims and fires, and `R` reloads. `A/D` and `W` remain supported as alternate movement keys.
 
-Mobile: play in landscape. Use the left stick to move, the right stick to aim, and the large SHOOT, JUMP, and BOOST buttons to act. Hold SHOOT to fire continuously.
+Mobile: play in landscape. Use the left stick to move and face, then hold the large SHOOT button to fire with assisted targeting. JUMP and BOOST are beside it.
 
 ## Deployment notes
 

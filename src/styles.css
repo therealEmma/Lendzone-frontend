@@ -204,7 +204,6 @@ input:focus { border-color: #2ec4b6; box-shadow: 0 0 0 3px rgba(46,196,182,.12);
   .mobile-controls { display: block; position: absolute; inset: 0; pointer-events: none; }
   .touch-pad { position: absolute; bottom: calc(74px + env(safe-area-inset-bottom)); width: 124px; height: 124px; border: 1px solid rgba(162,220,222,.2); border-radius: 50%; background: rgba(9,27,42,.25); pointer-events: auto; touch-action: none; transition: border-color .15s, background .15s, box-shadow .15s; }
   .left-pad { left: max(16px, env(safe-area-inset-left)); }
-  .right-pad { right: max(16px, env(safe-area-inset-right)); }
   .touch-pad span { position: absolute; inset: 36px; border-radius: 50%; border: 1px solid rgba(162,220,222,.28); background: rgba(46,196,182,.12); }
   .touch-pad.active { border-color: rgba(46,196,182,.75); background: rgba(46,196,182,.16); box-shadow: 0 0 22px rgba(46,196,182,.18); }
   .touch-pad .stick-knob { left: 50%; top: 50%; inset: auto; width: 48px; height: 48px; transform: translate(-50%, -50%); transition: transform .08s ease-out, background .15s, border-color .15s; }
@@ -227,7 +226,7 @@ input:focus { border-color: #2ec4b6; box-shadow: 0 0 0 3px rgba(46,196,182,.12);
   .left-pad { left: max(18px, env(safe-area-inset-left)); }
   .right-pad { right: max(18px, env(safe-area-inset-right)); }
   .touch-pad .stick-knob { width: 54px; height: 54px; }
-  .touch-buttons { left: auto; right: max(146px, calc(env(safe-area-inset-right) + 18px)); bottom: calc(18px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(2, clamp(58px, 9vw, 76px)); grid-template-areas: 'shoot shoot' 'jump boost'; gap: 8px; transform: none; }
+  .touch-buttons { left: auto; right: max(18px, env(safe-area-inset-right)); bottom: calc(18px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(2, clamp(58px, 9vw, 76px)); grid-template-areas: 'shoot shoot' 'jump boost'; gap: 8px; transform: none; }
   .touch-buttons button { width: clamp(58px, 9vw, 76px); height: clamp(58px, 9vw, 76px); font-size: 9px; }
   .touch-buttons .shoot-button { grid-area: shoot; justify-self: center; width: clamp(78px, 12vw, 98px); height: clamp(70px, 11vw, 90px); font-size: 10px; }
   .touch-buttons button:nth-child(2) { grid-area: jump; }
@@ -242,8 +241,7 @@ input:focus { border-color: #2ec4b6; box-shadow: 0 0 0 3px rgba(46,196,182,.12);
 @media (max-height: 560px) and (orientation: landscape) {
   .mobile-controls .touch-pad { bottom: calc(12px + env(safe-area-inset-bottom)); width: clamp(104px, 22vw, 132px); height: clamp(104px, 22vw, 132px); }
   .mobile-controls .left-pad { left: 12px; }
-  .mobile-controls .right-pad { right: 12px; }
-  .touch-buttons { right: max(128px, calc(env(safe-area-inset-right) + 14px)); left: auto; bottom: calc(12px + env(safe-area-inset-bottom)); transform: none; }
+  .touch-buttons { right: max(12px, env(safe-area-inset-right)); left: auto; bottom: calc(12px + env(safe-area-inset-bottom)); transform: none; }
   .player-status, .ammo-status { bottom: calc(12px + env(safe-area-inset-bottom)); }
   .player-status { left: max(145px, env(safe-area-inset-left)); }
   .ammo-status { right: max(145px, env(safe-area-inset-right)); }
