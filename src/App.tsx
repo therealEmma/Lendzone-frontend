@@ -104,6 +104,19 @@ export default function App() {
     socket.emit('hostAction', payload);
   }, [socket]);
 
+  const leaveToJoin = useCallback(() => {
+    gameAudio.stopMusic();
+    setJoined(false);
+    setSession(null);
+    setSnapshot(null);
+    setNotice(null);
+    setJoinError('');
+    socket.disconnect();
+    window.setTimeout(() => {
+      if (!socket.connected) socket.connect();
+    }, 0);
+  }, [socket]);
+
   if (!joined || !session) {
     return (
       <JoinScreen
@@ -123,7 +136,7 @@ export default function App() {
   const isHost = Boolean(snapshot?.hostId === session.id || session.isHost);
 
   if (phase === 'LOBBY') {
-    return <LobbyScreen snapshot={snapshot} session={session} isHost={isHost} notice={notice} onHostAction={sendHostAction} onLeave={() => { gameAudio.stopMusic(); socket.disconnect(); }} />;
+    return <LobbyScreen snapshot={snapshot} session={session} isHost={isHost} notice={notice} onHostAction={sendHostAction} onLeave={leaveToJoin} />;
   }
   if (phase === 'RESULTS') {
     return <ResultsScreen snapshot={snapshot} isHost={isHost} onHostAction={sendHostAction} />;
@@ -135,6 +148,7 @@ export default function App() {
       session={session}
       isHost={isHost}
       onHostAction={sendHostAction}
+      onLeave={leaveToJoin}
       notice={notice}
     />
   );
@@ -227,17 +241,47 @@ function ResultsScreen({ snapshot, isHost, onHostAction }: { snapshot: GameSnaps
   return <main className="screen-shell results-shell"><div className="results-glow" /><div className="eyebrow">ROUND COMPLETE</div><h1>MISSION<br /><span>REPORT</span></h1><p className="results-kicker">The Lendzone arena has a new champion.</p><div className="results-board panel-glass">{leaderboard.slice(0, 10).map((player, index) => <div className={`result-row ${index === 0 ? 'winner' : ''}`} key={player.id}><span className="place">{String(index + 1).padStart(2, '0')}</span><span className="result-dot" style={{ background: player.color }} /><strong>{player.name}</strong><span className="result-kills">{player.kills}<small> KILLS</small></span><span className="result-deaths">{player.deaths}D</span></div>)}</div><div className="results-actions">{isHost ? <><input className="secret-inline" type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Owner key" /><button className="primary-button" disabled={!canRestart} onClick={() => onHostAction({ secret, action: 'restart' })}>{canRestart ? 'START ANOTHER ROUND' : 'WAITING FOR 1 MORE PLAYER'} <span>↗</span></button></> : <div className="lobby-subtext">Waiting for the owner to queue the next round.</div>}</div></main>;
 }
 
-function GameScreen({ socket, snapshot, session, isHost, onHostAction, notice }: {
+function GameScreen({ socket, snapshot, session, isHost, onHostAction, onLeave, notice }: {
   socket: Socket; snapshot: GameSnapshot | null; session: SessionPayload; isHost: boolean;
-  onHostAction: (payload: HostActionPayload) => void; notice: Notice | null;
+  onHostAction: (payload: HostActionPayload) => void; onLeave: () => void; notice: Notice | null;
 }) {
   const [secret, setSecret] = useState('');
   const [showControls, setShowControls] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
     const timer = window.setTimeout(() => setShowControls(false), 15_000);
     return () => window.clearTimeout(timer);
   }, []);
-  return <main className="game-shell"><CanvasGame socket={socket} snapshot={snapshot} localId={session.id} /><GameHud snapshot={snapshot} localId={session.id} isHost={isHost} secret={secret} setSecret={setSecret} onHostAction={onHostAction} />{showControls && <ControlsBrief />}{notice && <div className={`notice-toast ${notice.type}`}>{notice.message}</div>}</main>;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen((current) => !current);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+  return <main className="game-shell"><CanvasGame socket={socket} snapshot={snapshot} localId={session.id} /><GameHud snapshot={snapshot} localId={session.id} isHost={isHost} secret={secret} setSecret={setSecret} onHostAction={onHostAction} /><button className="game-menu-toggle" onClick={() => setMenuOpen((current) => !current)}>{menuOpen ? 'CLOSE' : 'MENU'}</button>{showControls && <ControlsBrief />}{menuOpen && <GameMenu isHost={isHost} secret={secret} setSecret={setSecret} onHostAction={onHostAction} onClose={() => setMenuOpen(false)} onLeave={onLeave} />}{notice && <div className={`notice-toast ${notice.type}`}>{notice.message}</div>}</main>;
+}
+
+function GameMenu({ isHost, secret, setSecret, onHostAction, onClose, onLeave }: {
+  isHost: boolean; secret: string; setSecret: (value: string) => void;
+  onHostAction: (payload: HostActionPayload) => void; onClose: () => void; onLeave: () => void;
+}) {
+  return <div className="game-menu-backdrop">
+    <section className="game-menu panel-glass" role="dialog" aria-modal="true" aria-label="Game menu">
+      <div className="controls-brief-title">LENDZONE // MENU</div>
+      <h2>Mission menu</h2>
+      <p>Leave the match or reopen the lobby for a fresh fireteam.</p>
+      <div className="game-menu-actions">
+        <button className="secondary-button" onClick={onClose}>RESUME MATCH</button>
+        {isHost && <>
+          <input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Owner key (optional)" />
+          <button className="primary-button" onClick={() => onHostAction({ secret, action: 'lobby' })}>RETURN EVERYONE TO LOBBY</button>
+        </>}
+        <button className="menu-leave-button" onClick={onLeave}>QUIT TO JOIN SCREEN</button>
+      </div>
+      <small>Press ESC to close this menu.</small>
+    </section>
+  </div>;
 }
 
 function ControlsBrief() {
