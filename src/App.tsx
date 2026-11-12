@@ -184,7 +184,7 @@ function JoinScreen(props: {
         <div className="join-footnote"><span className="status-dot" /> No account. No install. Share the link and play.</div>
       </section>
       <div className="join-aside">
-        <div className="aside-card"><span>01</span><strong>RUN &amp; GUN</strong><p>Arrow keys move and turn. Space fires. Shift boosts. Mouse controls are also supported.</p></div>
+        <div className="aside-card"><span>01</span><strong>RUN &amp; GUN</strong><p>Arrow keys move and turn. X fires. Shift boosts. Mouse controls are also supported.</p></div>
         <div className="aside-card"><span>02</span><strong>OWN THE ELEVATION</strong><p>Catwalks, open lanes, and vertical routes. Keep moving and control the sight lines.</p></div>
         <div className="aside-card"><span>03</span><strong>OWN THE FRONT</strong><p>Fast respawns. Five minute rounds. Highest score earns the Lendzone crown.</p></div>
       </div>
@@ -291,7 +291,7 @@ function ControlsBrief() {
       <div className="control-row"><kbd>← →</kbd><span>MOVE / TURN</span></div>
       <div className="control-row"><kbd>↑</kbd><span>JUMP / AIM UP</span></div>
       <div className="control-row"><kbd>↓</kbd><span>AIM DOWN</span></div>
-      <div className="control-row"><kbd>SPACE</kbd><span>FIRE</span></div>
+      <div className="control-row"><kbd>X</kbd><span>FIRE</span></div>
       <div className="control-row"><kbd>SHIFT</kbd><span>JETPACK BOOST</span></div>
       <div className="control-row"><kbd>MOUSE</kbd><span>AIM / FIRE</span></div>
       <div className="control-row"><kbd>R</kbd><span>RELOAD</span></div>

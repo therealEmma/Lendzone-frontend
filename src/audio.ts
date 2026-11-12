@@ -3,11 +3,9 @@ type AudioNodeFactory = typeof window.AudioContext;
 let context: AudioContext | null = null;
 let master: GainNode | null = null;
 let noiseBuffer: AudioBuffer | null = null;
-let musicBus: GainNode | null = null;
-let musicTimer: number | null = null;
-let musicStep = 0;
 type MusicMode = 'lobby' | 'combat';
 let musicMode: MusicMode | null = null;
+let musicPlayer: HTMLAudioElement | null = null;
 
 function getContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -66,46 +64,30 @@ function noise(duration: number, volume: number, delay = 0, destination: AudioNo
   source.stop(start + duration);
 }
 
-function musicTick(): void {
-  const ctx = getContext();
-  const bus = musicBus;
-  const mode = musicMode;
-  if (!ctx || !bus || !mode) return;
-  const combat = mode === 'combat';
-  const interval = combat ? 180 : 260;
-  const bassline = combat ? [55, 55, 65.41, 55, 73.42, 65.41, 55, 49] : [73.42, 73.42, 87.31, 98, 73.42, 65.41, 58.27, 65.41];
-  const pulse = combat ? [220, 261.63, 329.63, 392, 329.63, 261.63, 220, 196] : [293.66, 349.23, 440, 523.25, 440, 349.23, 293.66, 261.63];
-  const bass = bassline[musicStep % bassline.length];
-  const lead = pulse[musicStep % pulse.length];
-  tone(bass, bass * 0.9, combat ? 0.15 : 0.22, combat ? 'sawtooth' : 'triangle', combat ? 0.14 : 0.1, 0.02, bus);
-  tone(lead, lead * 1.02, combat ? 0.09 : 0.14, combat ? 'square' : 'sine', combat ? 0.045 : 0.035, 0.025, bus);
-  tone(combat ? 110 : 146.83, combat ? 52 : 110, combat ? 0.12 : 0.18, 'triangle', combat ? 0.065 : 0.045, 0.02, bus);
-  if (combat) noise(0.035, 0.035, 0.02, bus);
-  if (combat && musicStep % 4 === 0) tone(70, 38, 0.12, 'sawtooth', 0.08, 0.02, bus);
-  if (!combat && musicStep % 4 === 2) tone(196, 392, 0.12, 'sine', 0.025, 0.02, bus);
-  musicStep += 1;
-  musicTimer = window.setTimeout(musicTick, interval);
-}
-
 function startMusic(mode: MusicMode): void {
-  const ctx = getContext();
-  if (!ctx || !master) return;
-  if (musicTimer !== null && musicMode === mode) return;
-  stopMusic();
-  unlock();
-  musicBus = ctx.createGain();
-  musicBus.gain.setValueAtTime(mode === 'combat' ? 1 : 0.8, ctx.currentTime);
-  musicBus.connect(master);
+  if (typeof window === 'undefined') return;
+  if (!musicPlayer) {
+    musicPlayer = new Audio();
+    musicPlayer.loop = true;
+    musicPlayer.preload = 'auto';
+  }
+  if (musicMode === mode && !musicPlayer.paused) return;
+  const track = mode === 'combat' ? '/audio/combat.mp3' : '/audio/lobby.mp3';
+  musicPlayer.pause();
+  musicPlayer.src = track;
+  musicPlayer.currentTime = 0;
+  musicPlayer.volume = mode === 'combat' ? 0.48 : 0.35;
   musicMode = mode;
-  musicStep = 0;
-  musicTick();
+  void musicPlayer.play().catch(() => undefined);
 }
 
 function stopMusic(): void {
-  if (musicTimer !== null) window.clearTimeout(musicTimer);
-  musicTimer = null;
-  if (musicBus) musicBus.disconnect();
-  musicBus = null;
+  if (musicPlayer) {
+    musicPlayer.pause();
+    musicPlayer.removeAttribute('src');
+    musicPlayer.load();
+  }
+  musicPlayer = null;
   musicMode = null;
 }
 

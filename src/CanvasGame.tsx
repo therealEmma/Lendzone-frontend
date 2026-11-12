@@ -74,7 +74,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       gameAudio.unlock();
-      if ([' ', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w', 'shift', 'r'].includes(key)) event.preventDefault();
+      if ([' ', 'x', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w', 'shift', 'r'].includes(key)) event.preventDefault();
       if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w'].includes(key)) mouseRef.current.active = false;
       keysRef.current.add(key);
       if (key === 'r') inputRef.current.reload = true;
@@ -115,7 +115,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
         right: right || mobile.right,
         jump: up || mobile.jump,
         jetpack: keys.has('shift') || mobile.jetpack,
-        shoot: keys.has(' ') || mouseRef.current.down || mobile.shoot,
+        shoot: keys.has('x') || mouseRef.current.down || mobile.shoot,
         reload: inputRef.current.reload,
         aimAngle: mouseRef.current.active ? getMouseAim(snapshotRef.current, localId, cameraRef.current, mouseRef.current.x, mouseRef.current.y, canvasRef.current) : mobile.shoot ? mobile.aimAngle : keyboardAimAngle,
       };
