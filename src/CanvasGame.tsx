@@ -74,7 +74,8 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       gameAudio.unlock();
-      if ([' ', 'arrowleft', 'arrowright', 'a', 'd', 'w', 'shift', 'r'].includes(key)) event.preventDefault();
+      if ([' ', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w', 'shift', 'r'].includes(key)) event.preventDefault();
+      if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w'].includes(key)) mouseRef.current.active = false;
       keysRef.current.add(key);
       if (key === 'r') inputRef.current.reload = true;
     };
@@ -101,15 +102,22 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
     const interval = window.setInterval(() => {
       const keys = keysRef.current;
       const mobile = mobileRef.current;
+      const left = keys.has('arrowleft') || keys.has('a');
+      const right = keys.has('arrowright') || keys.has('d');
+      const up = keys.has('arrowup') || keys.has('w');
+      const down = keys.has('arrowdown');
+      const aimX = Number(right) - Number(left);
+      const aimY = Number(down) - Number(up);
+      const keyboardAimAngle = aimX || aimY ? Math.atan2(aimY, aimX) : inputRef.current.aimAngle;
       const command: InputCommand = {
         seq: ++seqRef.current,
-        left: keys.has('a') || keys.has('arrowleft') || mobile.left,
-        right: keys.has('d') || keys.has('arrowright') || mobile.right,
-        jump: keys.has('w') || keys.has(' ') || mobile.jump,
+        left: left || mobile.left,
+        right: right || mobile.right,
+        jump: up || mobile.jump,
         jetpack: keys.has('shift') || mobile.jetpack,
-        shoot: mouseRef.current.down || mobile.shoot,
+        shoot: keys.has(' ') || mouseRef.current.down || mobile.shoot,
         reload: inputRef.current.reload,
-        aimAngle: mouseRef.current.active ? getMouseAim(snapshotRef.current, localId, cameraRef.current, mouseRef.current.x, mouseRef.current.y, canvasRef.current) : mobile.aimAngle,
+        aimAngle: mouseRef.current.active ? getMouseAim(snapshotRef.current, localId, cameraRef.current, mouseRef.current.x, mouseRef.current.y, canvasRef.current) : mobile.shoot ? mobile.aimAngle : keyboardAimAngle,
       };
       if (command.shoot && Date.now() - audioRef.current.lastShotAt >= WORLD.fireInterval * 1000) {
         gameAudio.gunshot();

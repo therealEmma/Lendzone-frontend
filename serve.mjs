@@ -30,4 +30,4 @@ const server = createServer(async (request, response) => {
 });
 
 const port = Number(process.env.PORT || 4173);
-server.listen(port, '0.0.0.0', () => console.log(`Redline Protocol frontend listening on port ${port}`));
+server.listen(port, '0.0.0.0', () => console.log(`Lendzone frontend listening on port ${port}`));

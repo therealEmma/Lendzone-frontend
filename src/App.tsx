@@ -150,7 +150,7 @@ function JoinScreen(props: {
           <span className="brand-mark">✦</span>
           <span className="eyebrow">COMPANY ARCADE // 01</span>
         </div>
-        <h1>REDLINE<br /><span>PROTOCOL</span></h1>
+        <h1>LENDZONE</h1>
         <p className="hero-copy">Clock out. Lock in. Own the front line.</p>
         <div className="join-form">
           <label className="field-label" htmlFor="callsign">CALLSIGN</label>
@@ -168,9 +168,9 @@ function JoinScreen(props: {
         <div className="join-footnote"><span className="status-dot" /> No account. No install. Share the link and play.</div>
       </section>
       <div className="join-aside">
-        <div className="aside-card"><span>01</span><strong>RUN &amp; GUN</strong><p>A/D or stick to move. Space to jump. Jetpack through the kill zone.</p></div>
-        <div className="aside-card"><span>02</span><strong>TAKE COVER</strong><p>Concrete, crates, catwalks, and open air. Sight lines are part of the fight.</p></div>
-        <div className="aside-card"><span>03</span><strong>OWN THE FRONT</strong><p>Fast respawns. Five minute rounds. Highest score earns the Redline crown.</p></div>
+        <div className="aside-card"><span>01</span><strong>RUN &amp; GUN</strong><p>Arrow keys move and turn. Space fires. Shift boosts. Mouse controls are also supported.</p></div>
+        <div className="aside-card"><span>02</span><strong>OWN THE ELEVATION</strong><p>Catwalks, open lanes, and vertical routes. Keep moving and control the sight lines.</p></div>
+        <div className="aside-card"><span>03</span><strong>OWN THE FRONT</strong><p>Fast respawns. Five minute rounds. Highest score earns the Lendzone crown.</p></div>
       </div>
     </main>
   );
@@ -194,12 +194,12 @@ function LobbyScreen({ snapshot, session, isHost, notice, onHostAction, onLeave 
   };
   return (
     <main className="screen-shell lobby-shell">
-      <header className="lobby-header"><div className="mini-brand"><span>✦</span> REDLINE PROTOCOL</div><div className="connection-pill"><span className="status-dot" /> LIVE ROOM <strong>{players.length}/{snapshot?.maxPlayers || session.maxPlayers}</strong></div><button className="ghost-button" onClick={onLeave}>LEAVE</button></header>
+      <header className="lobby-header"><div className="mini-brand"><span>✦</span> LENDZONE</div><div className="connection-pill"><span className="status-dot" /> LIVE ROOM <strong>{players.length}/{snapshot?.maxPlayers || session.maxPlayers}</strong></div><button className="ghost-button" onClick={onLeave}>LEAVE</button></header>
       <section className="lobby-content">
-        <div className="lobby-title"><span className="eyebrow">OPERATION: REDLINE FRONT</span><h2>Squad up.</h2><p>Waiting for the owner to deploy the fireteam<span className="blink">_</span></p></div>
+        <div className="lobby-title"><span className="eyebrow">OPERATION: LENDZONE FRONT</span><h2>Squad up.</h2><p>Waiting for the owner to deploy the fireteam<span className="blink">_</span></p></div>
         <div className="lobby-grid">
           <div className="panel-glass roster-panel"><div className="panel-heading"><span>FIRETEAM // {players.length}</span><span className="live-label">● ONLINE</span></div><div className="roster-list">{players.length === 0 ? <div className="empty-roster">Your squad will appear here.</div> : players.map((player, index) => <div className="roster-row" key={player.id}><span className="roster-index">{String(index + 1).padStart(2, '0')}</span><span className="roster-avatar" style={{ background: player.color }}>{player.name.slice(0, 1).toUpperCase()}</span><strong>{player.name}</strong>{player.id === snapshot?.hostId && <span className="host-tag">HOST</span>}<span className="roster-ready">READY</span></div>)}</div></div>
-          <div className="panel-glass briefing-panel"><div className="panel-heading">MISSION BRIEFING</div><div className="briefing-row"><span>MODE</span><strong>FREE-FOR-ALL</strong></div><div className="briefing-row"><span>ROUND</span><strong>{Math.round((duration || 300) / 60)} MINUTES</strong></div><div className="briefing-row"><span>DEPLOYMENT</span><strong>{capacity} OPERATIVES</strong></div><div className="briefing-row"><span>MAP</span><strong>REDLINE OUTPOST</strong></div><div className="briefing-tip">Tip: jetpack fuel refills while your boots are on a platform. Use the concrete cover to break sight lines.</div></div>
+          <div className="panel-glass briefing-panel"><div className="panel-heading">MISSION BRIEFING</div><div className="briefing-row"><span>MODE</span><strong>FREE-FOR-ALL</strong></div><div className="briefing-row"><span>ROUND</span><strong>{Math.round((duration || 300) / 60)} MINUTES</strong></div><div className="briefing-row"><span>DEPLOYMENT</span><strong>{capacity} OPERATIVES</strong></div><div className="briefing-row"><span>MAP</span><strong>LENDZONE OUTPOST</strong></div><div className="briefing-tip">Tip: jetpack fuel refills while your boots are on a platform. Use the catwalks and open lanes to break sight lines.</div></div>
         </div>
         <div className="lobby-actions"><button className="primary-button wide-button" disabled={isHost && !canDeploy} onClick={() => isHost ? start() : setShowHost(true)}>{isHost ? (canDeploy ? 'START THE ROUND' : 'WAITING FOR 1 MORE PLAYER') : 'I HAVE THE HOST KEY'} <span>→</span></button><div className="lobby-subtext">{isHost ? (canDeploy ? 'You are the room host. Set the pace.' : 'At least 2 operatives are required before deployment.') : 'The host can start the round from this room.'}</div></div>
         <button className="text-button" onClick={() => setShowHost((current) => !current)}>{showHost ? 'Hide host controls' : 'Open host controls'}</button>
@@ -222,7 +222,7 @@ function ResultsScreen({ snapshot, isHost, onHostAction }: { snapshot: GameSnaps
   const [secret, setSecret] = useState('');
   const leaderboard = snapshot?.leaderboard || [];
   const canRestart = isHost && (snapshot?.playerCount || 0) >= 2;
-  return <main className="screen-shell results-shell"><div className="results-glow" /><div className="eyebrow">ROUND COMPLETE</div><h1>MISSION<br /><span>REPORT</span></h1><p className="results-kicker">The Redline arena has a new champion.</p><div className="results-board panel-glass">{leaderboard.slice(0, 10).map((player, index) => <div className={`result-row ${index === 0 ? 'winner' : ''}`} key={player.id}><span className="place">{String(index + 1).padStart(2, '0')}</span><span className="result-dot" style={{ background: player.color }} /><strong>{player.name}</strong><span className="result-kills">{player.kills}<small> KILLS</small></span><span className="result-deaths">{player.deaths}D</span></div>)}</div><div className="results-actions">{isHost ? <><input className="secret-inline" type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Owner key" /><button className="primary-button" disabled={!canRestart} onClick={() => onHostAction({ secret, action: 'restart' })}>{canRestart ? 'START ANOTHER ROUND' : 'WAITING FOR 1 MORE PLAYER'} <span>↗</span></button></> : <div className="lobby-subtext">Waiting for the owner to queue the next round.</div>}</div></main>;
+  return <main className="screen-shell results-shell"><div className="results-glow" /><div className="eyebrow">ROUND COMPLETE</div><h1>MISSION<br /><span>REPORT</span></h1><p className="results-kicker">The Lendzone arena has a new champion.</p><div className="results-board panel-glass">{leaderboard.slice(0, 10).map((player, index) => <div className={`result-row ${index === 0 ? 'winner' : ''}`} key={player.id}><span className="place">{String(index + 1).padStart(2, '0')}</span><span className="result-dot" style={{ background: player.color }} /><strong>{player.name}</strong><span className="result-kills">{player.kills}<small> KILLS</small></span><span className="result-deaths">{player.deaths}D</span></div>)}</div><div className="results-actions">{isHost ? <><input className="secret-inline" type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Owner key" /><button className="primary-button" disabled={!canRestart} onClick={() => onHostAction({ secret, action: 'restart' })}>{canRestart ? 'START ANOTHER ROUND' : 'WAITING FOR 1 MORE PLAYER'} <span>↗</span></button></> : <div className="lobby-subtext">Waiting for the owner to queue the next round.</div>}</div></main>;
 }
 
 function GameScreen({ socket, snapshot, session, isHost, onHostAction, notice }: {
@@ -240,7 +240,7 @@ function GameHud({ snapshot, localId, isHost, secret, setSecret, onHostAction }:
   const timerSeconds = Math.ceil((snapshot?.timeRemaining || 0) / 1000);
   const timer = `${Math.floor(timerSeconds / 60).toString().padStart(2, '0')}:${(timerSeconds % 60).toString().padStart(2, '0')}`;
   return <>
-    <div className="hud-top"><div className="hud-brand">✦ <span>REDLINE PROTOCOL</span></div><div className={`match-clock ${snapshot?.phase === 'COUNTDOWN' ? 'countdown-clock' : ''}`}>{snapshot?.phase === 'COUNTDOWN' ? snapshot.countdown : timer}</div><div className="hud-count"><span className="status-dot" /> {snapshot?.playerCount || 0}/{snapshot?.maxPlayers || 30} IN ARENA</div></div>
+    <div className="hud-top"><div className="hud-brand">✦ <span>LENDZONE</span></div><div className={`match-clock ${snapshot?.phase === 'COUNTDOWN' ? 'countdown-clock' : ''}`}>{snapshot?.phase === 'COUNTDOWN' ? snapshot.countdown : timer}</div><div className="hud-count"><span className="status-dot" /> {snapshot?.playerCount || 0}/{snapshot?.maxPlayers || 30} IN ARENA</div></div>
     <div className="leaderboard hud-panel"><div className="hud-panel-title">TOP OPERATIVES</div>{(snapshot?.leaderboard || []).slice(0, 5).map((entry, index) => <div className={`leader-row ${entry.id === localId ? 'local' : ''}`} key={entry.id}><span>{index + 1}</span><i style={{ background: entry.color }} /><strong>{entry.name}</strong><b>{entry.kills}</b></div>)}</div>
     <div className="kill-feed">{(snapshot?.killFeed || []).slice(0, 4).map((item) => <div key={item.id}><strong>{item.killer}</strong><span> eliminated </span><strong>{item.victim}</strong></div>)}</div>
     <div className="player-status hud-panel"><div className="status-line"><span>HEALTH</span><strong>{Math.max(0, localPlayer?.hp || 0)}</strong></div><div className="meter health-meter"><i style={{ width: `${Math.max(0, localPlayer?.hp || 0)}%` }} /></div><div className="status-line fuel-label"><span>JETPACK FUEL</span><strong>{Math.round(localPlayer?.fuel || 0)}%</strong></div><div className="meter fuel-meter"><i style={{ width: `${Math.max(0, localPlayer?.fuel || 0)}%` }} /></div></div>

@@ -1,6 +1,6 @@
-# Redline Protocol
+# Lendzone
 
-Redline Protocol is an original, browser-based, real-time 2D side-view arena shooter. The Node.js server is authoritative for movement, platforms, jetpack fuel, bullets, damage, respawns, scores, and match timing. The client renders the world with Canvas and uses Socket.IO for input and snapshots.
+Lendzone is an original, browser-based, real-time 2D side-view arena shooter. The Node.js server is authoritative for movement, platforms, jetpack fuel, bullets, damage, respawns, scores, and match timing. The client renders the world with Canvas and uses Socket.IO for input and snapshots.
 
 The repository is split into `backend/` for the server, physics, shared network contracts, and game rules, and `frontend/` for the React/Vite Canvas client.
 
@@ -70,7 +70,7 @@ The smoke test verifies two clients can join and enter the PLAYING state. The lo
 
 ## Controls
 
-Desktop: `A/D` or arrow keys move, `W/Space` jumps, `Shift` flies, mouse aims and fires, `R` reloads.
+Desktop: Arrow Left/Right move and turn, Arrow Up jumps, Arrow Down aims down, Space fires, Shift boosts, mouse aims and fires, and `R` reloads. `A/D` and `W` remain supported as alternate movement keys.
 
 Mobile: use the left movement stick, right aim/fire stick, and the jump/boost buttons. Landscape orientation is recommended.
 
