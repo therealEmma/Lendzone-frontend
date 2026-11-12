@@ -93,7 +93,7 @@ The smoke test verifies two clients can join and enter the PLAYING state. The lo
 
 ## Controls
 
-Desktop: Arrow Left/Right move and turn, Arrow Up jumps and activates the jetpack, Arrow Down aims down, `X` fires, Shift boosts, mouse aims and fires, and `R` reloads. `A/D` and `W` remain supported as alternate movement keys.
+Desktop: Arrow Left/Right move and turn, Arrow Up jumps and activates the jetpack, Arrow Down aims down, `X` fires, Shift boosts, mouse aims and fires, and the rifle reloads automatically when empty. `A/D` and `W` remain supported as alternate movement keys.
 
 Mobile: play in landscape. Use the LEFT and RIGHT buttons at the bottom-left to move and face, then tap or hold SHOOT at the bottom-right. JUMP and BOOST are beside it. All mobile buttons support independent multitouch.
 

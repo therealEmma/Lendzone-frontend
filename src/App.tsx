@@ -943,8 +943,8 @@ function ControlsBrief() {
           <span>AIM / FIRE</span>
         </div>
         <div className="control-row">
-          <kbd>R</kbd>
-          <span>RELOAD</span>
+          <kbd>AUTO</kbd>
+          <span>RELOADS WHEN EMPTY</span>
         </div>
       </div>
     </aside>
@@ -1032,7 +1032,7 @@ function GameHud({
           <small>/{localPlayer?.magazineSize ?? 30}</small>
         </div>
         <div className="ammo-label">
-          {localPlayer?.ammo === 0 ? "PRESS R TO RELOAD" : "RIFLE // AUTO"}
+          {localPlayer?.ammo === 0 ? "RELOADING // AUTO" : "RIFLE // AUTO"}
         </div>
       </div>
       {snapshot?.phase === "COUNTDOWN" && (

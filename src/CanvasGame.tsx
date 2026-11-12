@@ -22,6 +22,7 @@ interface AudioState {
   countdown: number;
   lastHp: number;
   lastKills: number;
+  lastAmmo: number;
   lastShotAt: number;
   lastJump: boolean;
   lastBoostAt: number;
@@ -37,7 +38,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
   const seqRef = useRef(0);
   const visualRef = useRef(new Map<string, { x: number; y: number; last: number }>());
   const cameraRef = useRef({ x: 1200, y: 600, zoom: 1 });
-  const audioRef = useRef<AudioState>({ projectileIds: new Set<number>(), phase: 'LOBBY', countdown: 0, lastHp: WORLD.playerMaxHp, lastKills: 0, lastShotAt: 0, lastJump: false, lastBoostAt: 0 });
+  const audioRef = useRef<AudioState>({ projectileIds: new Set<number>(), phase: 'LOBBY', countdown: 0, lastHp: WORLD.playerMaxHp, lastKills: 0, lastAmmo: WORLD.magazineSize, lastShotAt: 0, lastJump: false, lastBoostAt: 0 });
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -55,12 +56,14 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
     if (local) {
       if (local.hp < audioState.lastHp) gameAudio.hit();
       if (local.score.kills > audioState.lastKills) gameAudio.elimination();
+      if (local.ammo === 0 && audioState.lastAmmo > 0) gameAudio.reload();
       if (local.jetpacking && Date.now() - audioState.lastBoostAt > 220) {
         gameAudio.boost();
         audioState.lastBoostAt = Date.now();
       }
       audioState.lastHp = local.hp;
       audioState.lastKills = local.score.kills;
+      audioState.lastAmmo = local.ammo;
     }
     if (snapshot.phase === 'COUNTDOWN' && snapshot.countdown !== audioState.countdown) gameAudio.countdown();
     if (snapshot.phase === 'PLAYING' && audioState.phase !== 'PLAYING') gameAudio.roundStart();
@@ -77,10 +80,9 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
       const key = event.key.toLowerCase();
       gameAudio.unlock();
-      if (event.code === 'Space' || ['x', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w', 'shift', 'r'].includes(key)) event.preventDefault();
+      if (event.code === 'Space' || ['x', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w', 'shift'].includes(key)) event.preventDefault();
       if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w'].includes(key)) mouseRef.current.active = false;
       keysRef.current.add(key);
-      if (key === 'r') inputRef.current.reload = true;
     };
     const onKeyUp = (event: KeyboardEvent) => { keysRef.current.delete(event.key.toLowerCase()); };
     const onPointerMove = (event: globalThis.PointerEvent) => {
@@ -130,18 +132,16 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
         jump: up || mobile.jump,
         jetpack: keys.has('arrowup') || keys.has('shift') || mobile.jetpack,
         shoot: keys.has('x') || mouseRef.current.down || mobile.shoot || mobile.shootPulse > 0,
-        reload: inputRef.current.reload,
+        reload: false,
         aimAngle,
       };
       if (command.shoot && Date.now() - audioRef.current.lastShotAt >= WORLD.fireInterval * 1000) {
         gameAudio.gunshot();
         audioRef.current.lastShotAt = Date.now();
       }
-      if (command.reload) gameAudio.reload();
       if (command.jump && !inputRef.current.jump) gameAudio.jump();
       inputRef.current = command;
       socket.emit('input', command);
-      inputRef.current.reload = false;
       mobileRef.current.shootPulse = 0;
     }, 33);
     return () => window.clearInterval(interval);
