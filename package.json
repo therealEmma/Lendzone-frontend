@@ -8,10 +8,10 @@
     "dev:all": "tsx dev.mjs",
     "dev:server": "npm --prefix ../backend run dev",
     "dev:client": "vite",
-    "build": "npm run build:server && npm run build:client",
+    "build": "npm run build:client",
     "build:server": "npm --prefix ../backend run build",
     "build:client": "vite build",
-    "start": "npm --prefix ../backend start",
+    "start": "node serve.mjs",
     "test": "tsx --test tests/physics.test.ts tests/rules.test.ts",
     "smoke": "node integration-smoke.mjs",
     "loadtest": "tsx loadtest.ts"

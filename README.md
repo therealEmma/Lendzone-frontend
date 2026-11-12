@@ -35,6 +35,20 @@ If you want the old convenience launcher, run `npm run dev:all` from `frontend/`
 
 Open `http://localhost:5173` in two or more browser tabs. The first player is shown as the room owner and can start/manage the room directly; `HOST_SECRET` from `backend/.env` can also be used for remote/admin control. The owner can set the round duration and room capacity before deployment. A round still requires at least two players.
 
+## Deploy the frontend to Vercel
+
+Create a Vercel project from this repository and set its **Root Directory** to `frontend`. Vercel will use the included `vercel.json` and run `npm run build`, publishing `frontend/dist`.
+
+Add this Vercel environment variable for the Production environment:
+
+```text
+VITE_SERVER_URL=https://YOUR-RAILWAY-BACKEND.up.railway.app
+```
+
+Use the Railway backend URL without a trailing slash, then redeploy Vercel. The backend Railway service should use `backend` as its Root Directory, `npm run build` as its build command, and `npm start` as its start command. Its `CORS_ORIGIN` value must be your Vercel URL, for example `https://your-game.vercel.app`.
+
+The Railway backend URL is not the game page. It exposes the API, health check, and Socket.IO connection; the playable page is the Vercel URL.
+
 For a production-style single process:
 
 ```bash

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import {
   GameSnapshot, HostActionPayload, SessionPayload, MatchPhase,
-} from '../../backend/shared/types';
+} from './shared/types';
 import CanvasGame from './CanvasGame';
 import { gameAudio } from './audio';
 

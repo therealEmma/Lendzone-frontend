@@ -1,6 +1,6 @@
 import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Socket } from 'socket.io-client';
-import { GameSnapshot, InputCommand, PLATFORM_LAYOUT, PlayerSnapshot, WORLD } from '../../backend/shared/types';
+import { GameSnapshot, InputCommand, PLATFORM_LAYOUT, PlayerSnapshot, WORLD } from './shared/types';
 import { gameAudio } from './audio';
 
 interface MobileInput {
@@ -14,6 +14,17 @@ interface MobileInput {
 
 const EMPTY_MOBILE: MobileInput = { left: false, right: false, jump: false, jetpack: false, shoot: false, aimAngle: 0 };
 
+interface AudioState {
+  projectileIds: Set<number>;
+  phase: string;
+  countdown: number;
+  lastHp: number;
+  lastKills: number;
+  lastShotAt: number;
+  lastJump: boolean;
+  lastBoostAt: number;
+}
+
 export default function CanvasGame({ socket, snapshot, localId }: { socket: Socket; snapshot: GameSnapshot | null; localId: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const snapshotRef = useRef<GameSnapshot | null>(snapshot);
@@ -24,7 +35,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
   const seqRef = useRef(0);
   const visualRef = useRef(new Map<string, { x: number; y: number; last: number }>());
   const cameraRef = useRef({ x: 1200, y: 600, zoom: 1 });
-  const audioRef = useRef({ projectileIds: new Set<number>(), phase: 'LOBBY', countdown: 0, lastHp: WORLD.playerMaxHp, lastKills: 0, lastShotAt: 0, lastJump: false, lastBoostAt: 0 });
+  const audioRef = useRef<AudioState>({ projectileIds: new Set<number>(), phase: 'LOBBY', countdown: 0, lastHp: WORLD.playerMaxHp, lastKills: 0, lastShotAt: 0, lastJump: false, lastBoostAt: 0 });
 
   useEffect(() => {
     snapshotRef.current = snapshot;
