@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import {
   GameSnapshot, HostActionPayload, SessionPayload, MatchPhase,
@@ -21,6 +21,8 @@ export default function App() {
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [joinPending, setJoinPending] = useState(false);
+  const joinPendingRef = useRef(false);
   const [name, setName] = useState(() => localStorage.getItem('om-name') || '');
   const [color, setColor] = useState(() => localStorage.getItem('om-color') || COLORS[0]);
   const [joinError, setJoinError] = useState('');
@@ -32,13 +34,19 @@ export default function App() {
     };
     const onDisconnect = () => {
       setConnected(false);
+      joinPendingRef.current = false;
+      setJoinPending(false);
       setJoinError((current) => current || 'Backend disconnected. Start the backend and try again.');
     };
     const onConnectError = () => {
       setConnected(false);
+      joinPendingRef.current = false;
+      setJoinPending(false);
       setJoinError(`Cannot reach the backend at ${SERVER_URL}. Start it with "npm run dev" from the backend folder.`);
     };
     const onSession = (payload: SessionPayload) => {
+      joinPendingRef.current = false;
+      setJoinPending(false);
       setSession(payload);
       setJoined(true);
       localStorage.setItem('om-reconnect-token', payload.reconnectToken);
@@ -49,6 +57,8 @@ export default function App() {
       window.setTimeout(() => setNotice(null), 3500);
     };
     const onError = (next: { message: string }) => {
+      joinPendingRef.current = false;
+      setJoinPending(false);
       setJoinError(next.message);
       setNotice({ message: next.message, type: 'error' });
       window.setTimeout(() => setNotice((current) => current?.message === next.message ? null : current), 3500);
@@ -77,6 +87,7 @@ export default function App() {
   }, [socket]);
 
   const joinGame = () => {
+    if (joinPendingRef.current) return;
     gameAudio.unlock();
     gameAudio.ui();
     const trimmed = name.trim();
@@ -86,6 +97,8 @@ export default function App() {
     }
     localStorage.setItem('om-name', trimmed);
     localStorage.setItem('om-color', color);
+    joinPendingRef.current = true;
+    setJoinPending(true);
     setJoinError('');
     gameAudio.lobbyMusic();
     socket.emit('join', {
@@ -111,6 +124,8 @@ export default function App() {
     setSnapshot(null);
     setNotice(null);
     setJoinError('');
+    joinPendingRef.current = false;
+    setJoinPending(false);
     socket.disconnect();
     window.setTimeout(() => {
       if (!socket.connected) socket.connect();
@@ -127,6 +142,7 @@ export default function App() {
         setColor={setColor}
         onJoin={joinGame}
         onRetry={retryConnection}
+        joining={joinPending}
         error={joinError}
       />
     );
@@ -156,7 +172,7 @@ export default function App() {
 
 function JoinScreen(props: {
   connected: boolean; name: string; setName: (value: string) => void; color: string; setColor: (value: string) => void;
-  onJoin: () => void; onRetry: () => void; error: string;
+  onJoin: () => void; onRetry: () => void; joining: boolean; error: string;
 }) {
   return (
     <main className="screen-shell join-shell">
@@ -170,13 +186,13 @@ function JoinScreen(props: {
         <p className="hero-copy">Clock out. Lock in. Own the front line.</p>
         <div className="join-form">
           <label className="field-label" htmlFor="callsign">CALLSIGN</label>
-          <input id="callsign" maxLength={18} value={props.name} onChange={(event) => props.setName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') props.onJoin(); }} placeholder="e.g. Spreadsheet Samurai" autoFocus />
+          <input id="callsign" maxLength={18} value={props.name} onChange={(event) => props.setName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); props.onJoin(); } }} placeholder="e.g. Spreadsheet Samurai" autoFocus />
           <label className="field-label">SIGNAL COLOR</label>
           <div className="color-row">
             {COLORS.map((candidate) => <button aria-label={`Choose ${candidate}`} className={`color-swatch ${props.color === candidate ? 'selected' : ''}`} style={{ background: candidate }} key={candidate} onClick={() => props.setColor(candidate)} />)}
           </div>
-          <button className="primary-button" onClick={props.onJoin} disabled={!props.connected}>
-            {props.connected ? 'ENTER THE ARENA' : 'CONNECTING...'} <span>↗</span>
+          <button className="primary-button" onClick={props.onJoin} disabled={!props.connected || props.joining}>
+            {props.joining ? 'JOINING...' : props.connected ? 'ENTER THE ARENA' : 'CONNECTING...'} <span>↗</span>
           </button>
           {!props.connected && <button className="text-button connection-retry" onClick={props.onRetry}>RETRY CONNECTION</button>}
           {props.error && <div className="form-error">{props.error}</div>}
