@@ -1,0 +1,35 @@
+{
+  "name": "redline-protocol-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx dev.mjs",
+    "dev:server": "tsx watch ../backend/server/index.ts",
+    "dev:client": "vite",
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "tsc -p ../backend/tsconfig.json",
+    "build:client": "vite build",
+    "start": "node ../backend/dist/server/index.js",
+    "test": "tsx --test tests/physics.test.ts tests/rules.test.ts",
+    "smoke": "node integration-smoke.mjs",
+    "loadtest": "tsx loadtest.ts"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "socket.io-client": "4.8.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.7.0",
+    "@types/node": "20.19.39",
+    "@types/react": "18.3.27",
+    "@types/react-dom": "18.3.7",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.17",
+    "tsx": "4.20.3",
+    "typescript": "5.8.3",
+    "vite": "6.3.5"
+  }
+}
