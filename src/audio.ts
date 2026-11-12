@@ -6,6 +6,8 @@ let noiseBuffer: AudioBuffer | null = null;
 let musicBus: GainNode | null = null;
 let musicTimer: number | null = null;
 let musicStep = 0;
+type MusicMode = 'lobby' | 'combat';
+let musicMode: MusicMode | null = null;
 
 function getContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -14,7 +16,7 @@ function getContext(): AudioContext | null {
     if (!AudioContextClass) return null;
     context = new AudioContextClass();
     master = context.createGain();
-    master.gain.value = 0.18;
+    master.gain.value = 0.24;
     master.connect(context.destination);
   }
   return context;
@@ -66,26 +68,35 @@ function noise(duration: number, volume: number, delay = 0, destination: AudioNo
 
 function musicTick(): void {
   const ctx = getContext();
-  if (!ctx || !musicBus) return;
-  const bassline = [55, 55, 65.41, 55, 73.42, 65.41, 55, 49];
-  const pulse = [220, 261.63, 329.63, 392, 329.63, 261.63, 220, 196];
+  const bus = musicBus;
+  const mode = musicMode;
+  if (!ctx || !bus || !mode) return;
+  const combat = mode === 'combat';
+  const interval = combat ? 180 : 260;
+  const bassline = combat ? [55, 55, 65.41, 55, 73.42, 65.41, 55, 49] : [73.42, 73.42, 87.31, 98, 73.42, 65.41, 58.27, 65.41];
+  const pulse = combat ? [220, 261.63, 329.63, 392, 329.63, 261.63, 220, 196] : [293.66, 349.23, 440, 523.25, 440, 349.23, 293.66, 261.63];
   const bass = bassline[musicStep % bassline.length];
   const lead = pulse[musicStep % pulse.length];
-  tone(bass, bass * 0.96, 0.19, 'sawtooth', 0.075, 0.02, musicBus);
-  tone(lead, lead * 1.02, 0.075, 'square', 0.022, 0.025, musicBus);
-  noise(0.025, 0.018, 0.02, musicBus);
-  if (musicStep % 8 === 4) tone(110, 70, 0.16, 'triangle', 0.045, 0.02, musicBus);
+  tone(bass, bass * 0.9, combat ? 0.15 : 0.22, combat ? 'sawtooth' : 'triangle', combat ? 0.14 : 0.1, 0.02, bus);
+  tone(lead, lead * 1.02, combat ? 0.09 : 0.14, combat ? 'square' : 'sine', combat ? 0.045 : 0.035, 0.025, bus);
+  tone(combat ? 110 : 146.83, combat ? 52 : 110, combat ? 0.12 : 0.18, 'triangle', combat ? 0.065 : 0.045, 0.02, bus);
+  if (combat) noise(0.035, 0.035, 0.02, bus);
+  if (combat && musicStep % 4 === 0) tone(70, 38, 0.12, 'sawtooth', 0.08, 0.02, bus);
+  if (!combat && musicStep % 4 === 2) tone(196, 392, 0.12, 'sine', 0.025, 0.02, bus);
   musicStep += 1;
-  musicTimer = window.setTimeout(musicTick, 240);
+  musicTimer = window.setTimeout(musicTick, interval);
 }
 
-function startMusic(): void {
+function startMusic(mode: MusicMode): void {
   const ctx = getContext();
-  if (!ctx || !master || musicTimer !== null) return;
+  if (!ctx || !master) return;
+  if (musicTimer !== null && musicMode === mode) return;
+  stopMusic();
   unlock();
   musicBus = ctx.createGain();
-  musicBus.gain.setValueAtTime(0.7, ctx.currentTime);
+  musicBus.gain.setValueAtTime(mode === 'combat' ? 1 : 0.8, ctx.currentTime);
   musicBus.connect(master);
+  musicMode = mode;
   musicStep = 0;
   musicTick();
 }
@@ -95,6 +106,7 @@ function stopMusic(): void {
   musicTimer = null;
   if (musicBus) musicBus.disconnect();
   musicBus = null;
+  musicMode = null;
 }
 
 export const gameAudio = {
@@ -137,7 +149,11 @@ export const gameAudio = {
     unlock();
     tone(260, 520, 0.12, 'triangle', 0.07);
     tone(520, 980, 0.2, 'sawtooth', 0.06, 0.11);
-    startMusic();
+    startMusic('combat');
+  },
+  lobbyMusic() {
+    unlock();
+    startMusic('lobby');
   },
   stopMusic() {
     stopMusic();

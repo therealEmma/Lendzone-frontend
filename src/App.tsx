@@ -71,6 +71,7 @@ export default function App() {
       socket.off('snapshot', onSnapshot);
       socket.off('notice', onNotice);
       socket.off('errorMessage', onError);
+      gameAudio.stopMusic();
       socket.disconnect();
     };
   }, [socket]);
@@ -86,6 +87,7 @@ export default function App() {
     localStorage.setItem('om-name', trimmed);
     localStorage.setItem('om-color', color);
     setJoinError('');
+    gameAudio.lobbyMusic();
     socket.emit('join', {
       name: trimmed,
       color,
@@ -121,7 +123,7 @@ export default function App() {
   const isHost = Boolean(snapshot?.hostId === session.id || session.isHost);
 
   if (phase === 'LOBBY') {
-    return <LobbyScreen snapshot={snapshot} session={session} isHost={isHost} notice={notice} onHostAction={sendHostAction} onLeave={() => socket.disconnect()} />;
+    return <LobbyScreen snapshot={snapshot} session={session} isHost={isHost} notice={notice} onHostAction={sendHostAction} onLeave={() => { gameAudio.stopMusic(); socket.disconnect(); }} />;
   }
   if (phase === 'RESULTS') {
     return <ResultsScreen snapshot={snapshot} isHost={isHost} onHostAction={sendHostAction} />;
@@ -230,7 +232,27 @@ function GameScreen({ socket, snapshot, session, isHost, onHostAction, notice }:
   onHostAction: (payload: HostActionPayload) => void; notice: Notice | null;
 }) {
   const [secret, setSecret] = useState('');
-  return <main className="game-shell"><CanvasGame socket={socket} snapshot={snapshot} localId={session.id} /><GameHud snapshot={snapshot} localId={session.id} isHost={isHost} secret={secret} setSecret={setSecret} onHostAction={onHostAction} />{notice && <div className={`notice-toast ${notice.type}`}>{notice.message}</div>}</main>;
+  const [showControls, setShowControls] = useState(true);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowControls(false), 15_000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return <main className="game-shell"><CanvasGame socket={socket} snapshot={snapshot} localId={session.id} /><GameHud snapshot={snapshot} localId={session.id} isHost={isHost} secret={secret} setSecret={setSecret} onHostAction={onHostAction} />{showControls && <ControlsBrief />}{notice && <div className={`notice-toast ${notice.type}`}>{notice.message}</div>}</main>;
+}
+
+function ControlsBrief() {
+  return <aside className="controls-brief panel-glass" aria-label="Game controls">
+    <div className="controls-brief-title">CONTROLS // 15 SEC</div>
+    <div className="controls-grid">
+      <div className="control-row"><kbd>← →</kbd><span>MOVE / TURN</span></div>
+      <div className="control-row"><kbd>↑</kbd><span>JUMP / AIM UP</span></div>
+      <div className="control-row"><kbd>↓</kbd><span>AIM DOWN</span></div>
+      <div className="control-row"><kbd>SPACE</kbd><span>FIRE</span></div>
+      <div className="control-row"><kbd>SHIFT</kbd><span>JETPACK BOOST</span></div>
+      <div className="control-row"><kbd>MOUSE</kbd><span>AIM / FIRE</span></div>
+      <div className="control-row"><kbd>R</kbd><span>RELOAD</span></div>
+    </div>
+  </aside>;
 }
 
 function GameHud({ snapshot, localId, isHost, secret, setSecret, onHostAction }: {
