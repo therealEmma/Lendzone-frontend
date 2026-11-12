@@ -73,9 +73,10 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
     const canvas = canvasRef.current;
     if (!canvas) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
       const key = event.key.toLowerCase();
       gameAudio.unlock();
-      if ([' ', 'x', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w', 'shift', 'r'].includes(key)) event.preventDefault();
+      if (event.code === 'Space' || ['x', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w', 'shift', 'r'].includes(key)) event.preventDefault();
       if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w'].includes(key)) mouseRef.current.active = false;
       keysRef.current.add(key);
       if (key === 'r') inputRef.current.reload = true;
@@ -87,16 +88,19 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
       mouseRef.current.y = event.clientY - rect.top;
       mouseRef.current.active = true;
     };
-    const onPointerDown = (event: globalThis.PointerEvent) => { gameAudio.unlock(); if (event.pointerType === 'mouse') mouseRef.current.down = true; };
+    const onPointerDown = (event: globalThis.PointerEvent) => { gameAudio.unlock(); canvas.focus({ preventScroll: true }); if (event.pointerType === 'mouse') mouseRef.current.down = true; };
     const onPointerUp = (event: globalThis.PointerEvent) => { if (event.pointerType === 'mouse') mouseRef.current.down = false; };
-    const release = () => { keysRef.current.clear(); mouseRef.current.down = false; mobileRef.current = { ...EMPTY_MOBILE }; };
-    window.addEventListener('keydown', onKeyDown, { passive: false });
+    const release = () => { keysRef.current.clear(); mouseRef.current.down = false; mouseRef.current.active = false; mobileRef.current = { ...EMPTY_MOBILE }; };
+    window.addEventListener('keydown', onKeyDown, { capture: true, passive: false });
     window.addEventListener('keyup', onKeyUp);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
     window.addEventListener('blur', release);
-    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); canvas.removeEventListener('pointermove', onPointerMove); canvas.removeEventListener('pointerdown', onPointerDown); window.removeEventListener('pointerup', onPointerUp); window.removeEventListener('blur', release); };
+    window.addEventListener('pagehide', release);
+    document.addEventListener('visibilitychange', release);
+    return () => { window.removeEventListener('keydown', onKeyDown, true); window.removeEventListener('keyup', onKeyUp); canvas.removeEventListener('pointermove', onPointerMove); canvas.removeEventListener('pointerdown', onPointerDown); window.removeEventListener('pointerup', onPointerUp); window.removeEventListener('pointercancel', onPointerUp); window.removeEventListener('blur', release); window.removeEventListener('pagehide', release); document.removeEventListener('visibilitychange', release); };
   }, []);
 
   useEffect(() => {
@@ -167,7 +171,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
     return () => { cancelAnimationFrame(frame); window.removeEventListener('resize', resize); };
   }, [localId]);
 
-  return <><canvas className="game-canvas" ref={canvasRef} /><MobileControls onChange={(next) => { mobileRef.current = next; }} /><div className="orientation-lock" role="status" aria-live="polite"><div className="orientation-lock-card"><div className="orientation-lock-icon">↻</div><strong>ROTATE TO LANDSCAPE</strong><span>Turn your phone sideways for the best controls.</span></div></div></>;
+  return <><canvas className="game-canvas" ref={canvasRef} tabIndex={0} aria-label="Lendzone game arena" /><MobileControls onChange={(next) => { mobileRef.current = next; }} /><div className="orientation-lock" role="status" aria-live="polite"><div className="orientation-lock-card"><div className="orientation-lock-icon">↻</div><strong>ROTATE TO LANDSCAPE</strong><span>Turn your phone sideways for the best controls.</span></div></div></>;
 }
 
 function getMouseAim(snapshot: GameSnapshot | null, localId: string, camera: { x: number; y: number; zoom: number }, x: number, y: number, canvas: HTMLCanvasElement | null): number {

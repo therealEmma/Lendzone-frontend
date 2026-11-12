@@ -35,6 +35,29 @@ If you want the old convenience launcher, run `npm run dev:all` from `frontend/`
 
 Open `http://localhost:5173` in two or more browser tabs. The first player is shown as the room owner and can start/manage the room directly; `HOST_SECRET` from `backend/.env` can also be used for remote/admin control. The owner can set the round duration and room capacity before deployment. A round still requires at least two players.
 
+## Deploy the frontend as a separate Railway service
+
+Create a Railway service from this repository with its **Root Directory** set to `frontend`. Use `npm run build` as the build command and `npm start` as the start command. Do not use `build:server`; the frontend service must build only the Vite client.
+
+Set this frontend service variable before building:
+
+```text
+VITE_SERVER_URL=https://YOUR-RAILWAY-BACKEND.up.railway.app
+```
+
+The value must be the backend's public origin, without `/socket.io`, a path, or a trailing slash. Vite embeds it at build time, so redeploy after changing it. The frontend now refuses to silently connect to its own origin when this variable is missing.
+
+Set the backend service variables:
+
+```text
+MAX_PLAYERS=30
+CORS_ORIGIN=https://YOUR-RAILWAY-FRONTEND.up.railway.app
+```
+
+Railway supplies `PORT`; the backend binds to `0.0.0.0` and exposes `/health` plus Socket.IO at `/socket.io`. Use HTTPS public domains so the browser can upgrade to WSS. Keep the backend at one replica unless a shared Redis Socket.IO adapter is added; this game currently keeps its single room and combat state in process memory.
+
+The backend URL is an API/Socket.IO service, not the game page. Opening it should return a small JSON status response; open the frontend URL to play.
+
 ## Deploy the frontend to Vercel
 
 Create a Vercel project from this repository and set its **Root Directory** to `frontend`. Vercel will use the included `vercel.json` and run `npm run build`, publishing `frontend/dist`.
@@ -76,6 +99,6 @@ Mobile: play in landscape. Use the left stick to move and face, then hold the la
 
 ## Deployment notes
 
-Set `PORT`, `HOST_SECRET`, `MAX_PLAYERS`, `MATCH_DURATION_SECONDS`, and `CORS_ORIGIN` in the host environment. Set `VITE_SERVER_URL` only when the browser should connect to a separate API origin; same-origin production is the default. Put the service behind HTTPS so Socket.IO can use WSS.
+Set `PORT`, `HOST_SECRET`, `MAX_PLAYERS`, `MATCH_DURATION_SECONDS`, and `CORS_ORIGIN` in the backend environment. For every separately hosted frontend, `VITE_SERVER_URL` is required and must point at the same backend origin. Put both services behind HTTPS so Socket.IO can use WSS.
 
-The current MVP intentionally keeps state in process memory and supports one shared room. Restarting the process ends the room and clears scores, which is appropriate for a short-lived company event. Snapshots are sent as volatile 12 Hz updates so stale packets are dropped instead of queued under load, and the client interpolates remote players between snapshots.
+The current MVP intentionally keeps state in process memory and supports one shared room. Restarting the process ends the room and clears scores, which is appropriate for a short-lived company event. Snapshots are sent as volatile 12 Hz updates so stale packets are dropped instead of queued under load; reliable `shot`, `hit`, and elimination events cover short-lived combat events that may happen between snapshots. The `/health` response includes the room and instance ID so multiple-replica mistakes are visible.

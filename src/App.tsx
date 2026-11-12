@@ -1,22 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import {
-  GameSnapshot, HostActionPayload, SessionPayload, MatchPhase,
+  GameSnapshot, HostActionPayload, ProjectileSnapshot, SessionPayload, MatchPhase,
 } from './shared/types';
 import CanvasGame from './CanvasGame';
 import { gameAudio } from './audio';
 
 const COLORS = ['#ff4d6d', '#ff9f1c', '#ffe66d', '#2ec4b6', '#38bdf8', '#8b5cf6', '#f472b6', '#a3e635', '#fb7185', '#c084fc'];
-const DEFAULT_SERVER_URL = window.location.port === '5173'
+const configuredServerUrl = String(import.meta.env.VITE_SERVER_URL || '').trim().replace(/\/+$/, '');
+const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+const DEFAULT_SERVER_URL = isLocalHost
   ? `${window.location.protocol}//${window.location.hostname}:3000`
-  : window.location.origin;
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER_URL;
+  : '';
+const SERVER_URL = configuredServerUrl || DEFAULT_SERVER_URL;
+const SERVER_CONFIG_ERROR = !SERVER_URL
+  ? 'This deployment is missing VITE_SERVER_URL. Set it to the public Railway backend URL and redeploy the frontend.'
+  : window.location.protocol === 'https:' && SERVER_URL.startsWith('http://') && !isLocalHost
+    ? 'VITE_SERVER_URL must use https:// in production so Socket.IO can upgrade to secure WebSockets.'
+    : '';
+// Keep the socket object valid while the UI displays the actionable configuration error.
+const SOCKET_ENDPOINT = SERVER_URL || 'http://127.0.0.1:9';
 
 type Notice = { message: string; type: 'info' | 'error' };
 
 export default function App() {
-  const socket = useMemo<Socket>(() => io(SERVER_URL, { autoConnect: false, transports: ['websocket', 'polling'], timeout: 5_000 }), []);
-  const [connected, setConnected] = useState(socket.connected);
+  const socket = useMemo<Socket>(() => io(SOCKET_ENDPOINT, { autoConnect: false, transports: ['websocket', 'polling'], timeout: 5_000 }), []);
+  const [connected, setConnected] = useState(socket.connected && !SERVER_CONFIG_ERROR);
   const [joined, setJoined] = useState(false);
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
@@ -25,10 +34,15 @@ export default function App() {
   const joinPendingRef = useRef(false);
   const [name, setName] = useState(() => localStorage.getItem('om-name') || '');
   const [color, setColor] = useState(() => localStorage.getItem('om-color') || COLORS[0]);
-  const [joinError, setJoinError] = useState('');
+  const [joinError, setJoinError] = useState(SERVER_CONFIG_ERROR);
 
   useEffect(() => {
     const onConnect = () => {
+      console.info('[Lendzone] Socket.IO connected', {
+        serverUrl: SERVER_URL,
+        socketId: socket.id,
+        transport: socket.io.engine?.transport.name,
+      });
       setConnected(true);
       setJoinError('');
     };
@@ -38,13 +52,15 @@ export default function App() {
       setJoinPending(false);
       setJoinError((current) => current || 'Backend disconnected. Start the backend and try again.');
     };
-    const onConnectError = () => {
+    const onConnectError = (error: Error) => {
+      console.error('[Lendzone] Socket.IO connection failed', { serverUrl: SERVER_URL, message: error.message, error });
       setConnected(false);
       joinPendingRef.current = false;
       setJoinPending(false);
-      setJoinError(`Cannot reach the backend at ${SERVER_URL}. Start it with "npm run dev" from the backend folder.`);
+      setJoinError(`Cannot reach the backend at ${SERVER_URL}. ${error.message || 'Check the Railway URL, CORS, and WebSocket deployment.'}`);
     };
     const onSession = (payload: SessionPayload) => {
+      console.info('[Lendzone] Joined room', { roomId: payload.roomId, playerId: payload.id, isHost: payload.isHost, serverInstanceId: payload.serverInstanceId });
       joinPendingRef.current = false;
       setJoinPending(false);
       setSession(payload);
@@ -52,6 +68,12 @@ export default function App() {
       localStorage.setItem('om-reconnect-token', payload.reconnectToken);
     };
     const onSnapshot = (next: GameSnapshot) => setSnapshot(next);
+    const onShot = (shot: ProjectileSnapshot) => {
+      console.debug('[Lendzone] Remote shot received', { projectileId: shot.id, ownerId: shot.ownerId });
+      setSnapshot((current) => current && current.projectiles.some((projectile) => projectile.id === shot.id)
+        ? current
+        : current ? { ...current, projectiles: [...current.projectiles, shot] } : current);
+    };
     const onNotice = (next: Notice) => {
       setNotice(next);
       window.setTimeout(() => setNotice(null), 3500);
@@ -63,12 +85,16 @@ export default function App() {
       setNotice({ message: next.message, type: 'error' });
       window.setTimeout(() => setNotice((current) => current?.message === next.message ? null : current), 3500);
     };
+    if (SERVER_CONFIG_ERROR) {
+      return () => { gameAudio.stopMusic(); socket.disconnect(); };
+    }
     socket.on('connect', onConnect);
     socket.on('connected', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('connect_error', onConnectError);
     socket.on('session', onSession);
     socket.on('snapshot', onSnapshot);
+    socket.on('shot', onShot);
     socket.on('notice', onNotice);
     socket.on('errorMessage', onError);
     socket.connect();
@@ -79,6 +105,7 @@ export default function App() {
       socket.off('connect_error', onConnectError);
       socket.off('session', onSession);
       socket.off('snapshot', onSnapshot);
+      socket.off('shot', onShot);
       socket.off('notice', onNotice);
       socket.off('errorMessage', onError);
       gameAudio.stopMusic();
@@ -109,6 +136,10 @@ export default function App() {
   };
 
   const retryConnection = useCallback(() => {
+    if (SERVER_CONFIG_ERROR) {
+      setJoinError(SERVER_CONFIG_ERROR);
+      return;
+    }
     setJoinError('Reconnecting to the backend...');
     if (!socket.connected) socket.connect();
   }, [socket]);
