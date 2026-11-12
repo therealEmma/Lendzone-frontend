@@ -10,9 +10,10 @@ interface MobileInput {
   jetpack: boolean;
   shoot: boolean;
   aimAngle: number;
+  aimAngleSet: boolean;
 }
 
-const EMPTY_MOBILE: MobileInput = { left: false, right: false, jump: false, jetpack: false, shoot: false, aimAngle: 0 };
+const EMPTY_MOBILE: MobileInput = { left: false, right: false, jump: false, jetpack: false, shoot: false, aimAngle: 0, aimAngleSet: false };
 
 interface AudioState {
   projectileIds: Set<number>;
@@ -109,6 +110,13 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
       const aimX = Number(right) - Number(left);
       const aimY = Number(down) - Number(up);
       const keyboardAimAngle = aimX || aimY ? Math.atan2(aimY, aimX) : inputRef.current.aimAngle;
+      const aimAngle = mouseRef.current.active
+        ? getMouseAim(snapshotRef.current, localId, cameraRef.current, mouseRef.current.x, mouseRef.current.y, canvasRef.current)
+        : aimX || aimY
+          ? keyboardAimAngle
+          : mobile.aimAngleSet
+            ? mobile.aimAngle
+            : inputRef.current.aimAngle;
       const command: InputCommand = {
         seq: ++seqRef.current,
         left: left || mobile.left,
@@ -117,7 +125,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
         jetpack: keys.has('arrowup') || keys.has('shift') || mobile.jetpack,
         shoot: keys.has('x') || mouseRef.current.down || mobile.shoot,
         reload: inputRef.current.reload,
-        aimAngle: mouseRef.current.active ? getMouseAim(snapshotRef.current, localId, cameraRef.current, mouseRef.current.x, mouseRef.current.y, canvasRef.current) : mobile.shoot ? getMobileAim(snapshotRef.current, localId, mobile.aimAngle) : keyboardAimAngle,
+        aimAngle,
       };
       if (command.shoot && Date.now() - audioRef.current.lastShotAt >= WORLD.fireInterval * 1000) {
         gameAudio.gunshot();
@@ -170,20 +178,6 @@ function getMouseAim(snapshot: GameSnapshot | null, localId: string, camera: { x
   const px = (local.x + WORLD.playerWidth / 2 - camera.x) * camera.zoom + rect.width / 2;
   const py = (local.y + WORLD.playerHeight / 2 - camera.y) * camera.zoom + rect.height / 2;
   return Math.atan2(y - py, x - px);
-}
-
-function getMobileAim(snapshot: GameSnapshot | null, localId: string, fallback: number): number {
-  const local = snapshot?.players.find((player) => player.id === localId);
-  if (!local) return fallback;
-  const target = snapshot?.players
-    .filter((player) => player.id !== localId && player.alive)
-    .sort((first, second) => {
-      const firstDistance = (first.x - local.x) ** 2 + (first.y - local.y) ** 2;
-      const secondDistance = (second.x - local.x) ** 2 + (second.y - local.y) ** 2;
-      return firstDistance - secondDistance;
-    })[0];
-  if (!target) return fallback;
-  return Math.atan2(target.y + WORLD.playerHeight / 2 - (local.y + WORLD.playerHeight / 2), target.x + WORLD.playerWidth / 2 - (local.x + WORLD.playerWidth / 2));
 }
 
 function drawScene(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, snapshot: GameSnapshot, localId: string, visuals: Map<string, { x: number; y: number; last: number }>, camera: { x: number; y: number; zoom: number }, dt: number, time: number): void {
@@ -305,8 +299,10 @@ function MobileControls({ onChange }: { onChange: (value: MobileInput) => void }
     gameAudio.unlock();
     state.current.left = nx < -0.18;
     state.current.right = nx > 0.18;
-    if (state.current.left) state.current.aimAngle = Math.PI;
-    if (state.current.right) state.current.aimAngle = 0;
+    if (Math.hypot(nx, ny) > 0.18) {
+      state.current.aimAngle = Math.atan2(ny, nx);
+      state.current.aimAngleSet = true;
+    }
     setVisual((current) => ({ ...current, moveActive: true, left: state.current.left, right: state.current.right, moveX: nx, moveY: ny }));
     onChange({ ...state.current });
   };
