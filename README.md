@@ -95,10 +95,10 @@ The smoke test verifies two clients can join and enter the PLAYING state. The lo
 
 Desktop: Arrow Left/Right move and turn, Arrow Up jumps and activates the jetpack, Arrow Down aims down, `X` fires, Shift boosts, mouse aims and fires, and `R` reloads. `A/D` and `W` remain supported as alternate movement keys.
 
-Mobile: play in landscape. Use the left stick to move and face, then hold the large SHOOT button to fire in your current facing direction. JUMP and BOOST are beside it.
+Mobile: play in landscape. Use the LEFT and RIGHT buttons at the bottom-left to move and face, then tap or hold SHOOT at the bottom-right. JUMP and BOOST are beside it. All mobile buttons support independent multitouch.
 
 ## Deployment notes
 
 Set `PORT`, `HOST_SECRET`, `MAX_PLAYERS`, `MATCH_DURATION_SECONDS`, and `CORS_ORIGIN` in the backend environment. For every separately hosted frontend, `VITE_SERVER_URL` is required and must point at the same backend origin. Put both services behind HTTPS so Socket.IO can use WSS.
 
-The current MVP intentionally keeps state in process memory and supports one shared room. Restarting the process ends the room and clears scores, which is appropriate for a short-lived company event. Snapshots are sent as volatile 12 Hz updates so stale packets are dropped instead of queued under load; reliable `shot`, `hit`, and elimination events cover short-lived combat events that may happen between snapshots. The `/health` response includes the room and instance ID so multiple-replica mistakes are visible.
+The current MVP intentionally keeps state in process memory and supports one shared room. Restarting the process ends the room and clears scores; reconnect grace sessions do not survive a Railway restart or a move to another backend replica. Set `RECONNECT_GRACE_SECONDS=120` on the backend for the default two-minute grace period. Snapshots are sent as volatile 12 Hz updates so stale packets are dropped instead of queued under load; reliable `shot`, `hit`, and elimination events cover short-lived combat events that may happen between snapshots. The `/health` response includes the room and instance ID so multiple-replica mistakes are visible.

@@ -18,6 +18,7 @@
     "test": "tsx --test tests/physics.test.ts tests/rules.test.ts",
     "smoke": "node integration-smoke.mjs",
     "multiplayer-smoke": "node multiplayer-smoke.mjs",
+    "rejoin-smoke": "node rejoin-smoke.mjs",
     "loadtest": "tsx loadtest.ts"
   },
   "dependencies": {

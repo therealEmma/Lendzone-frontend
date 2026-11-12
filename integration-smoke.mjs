@@ -40,7 +40,7 @@ try {
     client.on('session', () => { state.sessions += 1; });
     client.on('snapshot', (snapshot) => {
       state.snapshots += 1;
-      if (snapshot.maxPlayers === 2) state.sawCapacity = true;
+      if (snapshot.maxPlayers === 3) state.sawCapacity = true;
       if (snapshot.phase === 'PLAYING') state.sawPlaying = true;
       if (snapshot.phase === 'RESULTS') state.sawResults = true;
     });
@@ -49,7 +49,9 @@ try {
   }
 
   await waitFor(() => state.sessions === 2);
-  clients[0].emit('hostAction', { secret: process.env.HOST_SECRET ?? 'change-me', action: 'capacity', capacity: 2 });
+  // The disconnected solo check is still within the reconnect grace window,
+  // so its slot is reserved. Capacity 3 is the smallest valid value here.
+  clients[0].emit('hostAction', { secret: process.env.HOST_SECRET ?? 'change-me', action: 'capacity', capacity: 3 });
   await waitFor(() => state.sawCapacity);
   clients[0].emit('hostAction', { secret: process.env.HOST_SECRET ?? 'change-me', action: 'start', durationSeconds: 30 });
   await waitFor(() => state.sawPlaying, 7000);

@@ -1,113 +1,257 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { io, Socket } from "socket.io-client";
 import {
-  GameSnapshot, HostActionPayload, ProjectileSnapshot, SessionPayload, MatchPhase,
-} from './shared/types';
-import CanvasGame from './CanvasGame';
-import { gameAudio } from './audio';
+  GameSnapshot,
+  HostActionPayload,
+  ProjectileSnapshot,
+  SessionPayload,
+  MatchPhase,
+} from "./shared/types";
+import CanvasGame from "./CanvasGame";
+import { gameAudio } from "./audio";
 
-const COLORS = ['#ff4d6d', '#ff9f1c', '#ffe66d', '#2ec4b6', '#38bdf8', '#8b5cf6', '#f472b6', '#a3e635', '#fb7185', '#c084fc'];
-const configuredServerUrl = String(import.meta.env.VITE_SERVER_URL || '').trim().replace(/\/+$/, '');
-const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+const COLORS = [
+  "#ff4d6d",
+  "#ff9f1c",
+  "#ffe66d",
+  "#2ec4b6",
+  "#38bdf8",
+  "#8b5cf6",
+  "#f472b6",
+  "#a3e635",
+  "#fb7185",
+  "#c084fc",
+];
+const configuredServerUrl = String(import.meta.env.VITE_SERVER_URL || "")
+  .trim()
+  .replace(/\/+$/, "");
+const isLocalHost = ["localhost", "127.0.0.1", "[::1]"].includes(
+  window.location.hostname,
+);
 const DEFAULT_SERVER_URL = isLocalHost
   ? `${window.location.protocol}//${window.location.hostname}:3000`
-  : '';
+  : "";
 const SERVER_URL = configuredServerUrl || DEFAULT_SERVER_URL;
 const SERVER_CONFIG_ERROR = !SERVER_URL
-  ? 'This deployment is missing VITE_SERVER_URL. Set it to the public Railway backend URL and redeploy the frontend.'
-  : window.location.protocol === 'https:' && SERVER_URL.startsWith('http://') && !isLocalHost
-    ? 'VITE_SERVER_URL must use https:// in production so Socket.IO can upgrade to secure WebSockets.'
-    : '';
+  ? "This deployment is missing VITE_SERVER_URL. Set it to the public Railway backend URL and redeploy the frontend."
+  : window.location.protocol === "https:" &&
+      SERVER_URL.startsWith("http://") &&
+      !isLocalHost
+    ? "VITE_SERVER_URL must use https:// in production so Socket.IO can upgrade to secure WebSockets."
+    : "";
 // Keep the socket object valid while the UI displays the actionable configuration error.
-const SOCKET_ENDPOINT = SERVER_URL || 'http://127.0.0.1:9';
+const SOCKET_ENDPOINT = SERVER_URL || "http://127.0.0.1:9";
 
-type Notice = { message: string; type: 'info' | 'error' };
+type Notice = { message: string; type: "info" | "error" };
+type ConnectionState = "connecting" | "connected" | "reconnecting" | "error";
 
 export default function App() {
-  const socket = useMemo<Socket>(() => io(SOCKET_ENDPOINT, { autoConnect: false, transports: ['websocket', 'polling'], timeout: 5_000 }), []);
-  const [connected, setConnected] = useState(socket.connected && !SERVER_CONFIG_ERROR);
+  const socket = useMemo<Socket>(
+    () =>
+      io(SOCKET_ENDPOINT, {
+        autoConnect: false,
+        transports: ["websocket", "polling"],
+        timeout: 5_000,
+      }),
+    [],
+  );
+  const [connected, setConnected] = useState(
+    socket.connected && !SERVER_CONFIG_ERROR,
+  );
+  const [connectionState, setConnectionState] = useState<ConnectionState>(
+    SERVER_CONFIG_ERROR ? "error" : "connecting",
+  );
   const [joined, setJoined] = useState(false);
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [joinPending, setJoinPending] = useState(false);
   const joinPendingRef = useRef(false);
-  const [name, setName] = useState(() => localStorage.getItem('om-name') || '');
-  const [color, setColor] = useState(() => localStorage.getItem('om-color') || COLORS[0]);
+  const joinedRef = useRef(false);
+  const sessionRef = useRef<SessionPayload | null>(null);
+  const intentionalDisconnectRef = useRef(false);
+  const reconnectingRef = useRef(false);
+  const [name, setName] = useState(() => localStorage.getItem("om-name") || "");
+  const [color, setColor] = useState(
+    () => localStorage.getItem("om-color") || COLORS[0],
+  );
   const [joinError, setJoinError] = useState(SERVER_CONFIG_ERROR);
 
   useEffect(() => {
+    const emitStoredRejoin = () => {
+      if (
+        intentionalDisconnectRef.current ||
+        joinPendingRef.current ||
+        (joinedRef.current && !reconnectingRef.current)
+      )
+        return;
+      const reconnectToken = localStorage.getItem("om-reconnect-token") || "";
+      const savedName = (localStorage.getItem("om-name") || "").trim();
+      if (!reconnectToken || savedName.length < 2) return;
+      joinPendingRef.current = true;
+      setJoinPending(true);
+      setJoinError("Rejoining your active match...");
+      setConnectionState("reconnecting");
+      reconnectingRef.current = true;
+      gameAudio.unlock();
+      gameAudio.lobbyMusic();
+      socket.emit("join", {
+        name: savedName,
+        color: localStorage.getItem("om-color") || COLORS[0],
+        reconnectToken,
+      });
+    };
     const onConnect = () => {
-      console.info('[Lendzone] Socket.IO connected', {
+      console.info("[Lendzone] Socket.IO connected", {
         serverUrl: SERVER_URL,
         socketId: socket.id,
         transport: socket.io.engine?.transport.name,
       });
       setConnected(true);
-      setJoinError('');
+      setConnectionState("connected");
+      setJoinError("");
+      emitStoredRejoin();
     };
-    const onDisconnect = () => {
+    const onServerConnected = (payload: {
+      connectionId?: string;
+      maxPlayers?: number;
+    }) => {
+      console.debug("[Lendzone] Backend handshake acknowledged", payload);
+    };
+    const onDisconnect = (reason: string) => {
       setConnected(false);
-      joinPendingRef.current = false;
-      setJoinPending(false);
-      setJoinError((current) => current || 'Backend disconnected. Start the backend and try again.');
+      if (
+        !intentionalDisconnectRef.current &&
+        (joinedRef.current || localStorage.getItem("om-reconnect-token"))
+      ) {
+        setConnectionState("reconnecting");
+        setJoinError("Reconnecting to the active match...");
+        reconnectingRef.current = true;
+        setJoinPending(false);
+      } else {
+        setConnectionState("error");
+        setJoinError(
+          (current) =>
+            current || `Backend disconnected (${reason}). Try again.`,
+        );
+      }
     };
     const onConnectError = (error: Error) => {
-      console.error('[Lendzone] Socket.IO connection failed', { serverUrl: SERVER_URL, message: error.message, error });
+      console.error("[Lendzone] Socket.IO connection failed", {
+        serverUrl: SERVER_URL,
+        message: error.message,
+        error,
+      });
       setConnected(false);
-      joinPendingRef.current = false;
-      setJoinPending(false);
-      setJoinError(`Cannot reach the backend at ${SERVER_URL}. ${error.message || 'Check the Railway URL, CORS, and WebSocket deployment.'}`);
+      if (joinedRef.current || localStorage.getItem("om-reconnect-token")) {
+        setConnectionState("reconnecting");
+        setJoinError("Reconnecting to the active match...");
+      } else {
+        setConnectionState("error");
+        setJoinError(
+          `Cannot reach the backend at ${SERVER_URL}. ${error.message || "Check the Railway URL, CORS, and WebSocket deployment."}`,
+        );
+      }
     };
     const onSession = (payload: SessionPayload) => {
-      console.info('[Lendzone] Joined room', { roomId: payload.roomId, playerId: payload.id, isHost: payload.isHost, serverInstanceId: payload.serverInstanceId });
+      console.info("[Lendzone] Joined room", {
+        roomId: payload.roomId,
+        playerId: payload.id,
+        isHost: payload.isHost,
+        serverInstanceId: payload.serverInstanceId,
+      });
       joinPendingRef.current = false;
       setJoinPending(false);
+      joinedRef.current = true;
+      sessionRef.current = payload;
+      const wasReconnecting = reconnectingRef.current;
+      reconnectingRef.current = false;
       setSession(payload);
       setJoined(true);
-      localStorage.setItem('om-reconnect-token', payload.reconnectToken);
+      setConnected(true);
+      setConnectionState("connected");
+      localStorage.setItem("om-reconnect-token", payload.reconnectToken);
+      socket.emit("requestState");
+      if (wasReconnecting)
+        setNotice({
+          message: "Reconnected to the active match.",
+          type: "info",
+        });
     };
     const onSnapshot = (next: GameSnapshot) => setSnapshot(next);
     const onShot = (shot: ProjectileSnapshot) => {
-      console.debug('[Lendzone] Remote shot received', { projectileId: shot.id, ownerId: shot.ownerId });
-      setSnapshot((current) => current && current.projectiles.some((projectile) => projectile.id === shot.id)
-        ? current
-        : current ? { ...current, projectiles: [...current.projectiles, shot] } : current);
+      console.debug("[Lendzone] Remote shot received", {
+        projectileId: shot.id,
+        ownerId: shot.ownerId,
+      });
+      setSnapshot((current) =>
+        current &&
+        current.projectiles.some((projectile) => projectile.id === shot.id)
+          ? current
+          : current
+            ? { ...current, projectiles: [...current.projectiles, shot] }
+            : current,
+      );
     };
     const onNotice = (next: Notice) => {
       setNotice(next);
       window.setTimeout(() => setNotice(null), 3500);
     };
-    const onError = (next: { message: string }) => {
+    const onError = (next: { message: string; code?: string }) => {
       joinPendingRef.current = false;
       setJoinPending(false);
+      if (next.code === "RECONNECT_EXPIRED") {
+        localStorage.removeItem("om-reconnect-token");
+        reconnectingRef.current = false;
+        joinedRef.current = false;
+        sessionRef.current = null;
+        setJoined(false);
+        setSession(null);
+        setSnapshot(null);
+        setConnectionState(socket.connected ? "connected" : "error");
+      }
       setJoinError(next.message);
-      setNotice({ message: next.message, type: 'error' });
-      window.setTimeout(() => setNotice((current) => current?.message === next.message ? null : current), 3500);
+      setNotice({ message: next.message, type: "error" });
+      window.setTimeout(
+        () =>
+          setNotice((current) =>
+            current?.message === next.message ? null : current,
+          ),
+        3500,
+      );
     };
     if (SERVER_CONFIG_ERROR) {
-      return () => { gameAudio.stopMusic(); socket.disconnect(); };
+      return () => {
+        gameAudio.stopMusic();
+        socket.disconnect();
+      };
     }
-    socket.on('connect', onConnect);
-    socket.on('connected', onConnect);
-    socket.on('disconnect', onDisconnect);
-    socket.on('connect_error', onConnectError);
-    socket.on('session', onSession);
-    socket.on('snapshot', onSnapshot);
-    socket.on('shot', onShot);
-    socket.on('notice', onNotice);
-    socket.on('errorMessage', onError);
+    socket.on("connect", onConnect);
+    socket.on("connected", onServerConnected);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
+    socket.on("session", onSession);
+    socket.on("snapshot", onSnapshot);
+    socket.on("shot", onShot);
+    socket.on("notice", onNotice);
+    socket.on("errorMessage", onError);
     socket.connect();
     return () => {
-      socket.off('connect', onConnect);
-      socket.off('connected', onConnect);
-      socket.off('disconnect', onDisconnect);
-      socket.off('connect_error', onConnectError);
-      socket.off('session', onSession);
-      socket.off('snapshot', onSnapshot);
-      socket.off('shot', onShot);
-      socket.off('notice', onNotice);
-      socket.off('errorMessage', onError);
+      socket.off("connect", onConnect);
+      socket.off("connected", onServerConnected);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
+      socket.off("session", onSession);
+      socket.off("snapshot", onSnapshot);
+      socket.off("shot", onShot);
+      socket.off("notice", onNotice);
+      socket.off("errorMessage", onError);
       gameAudio.stopMusic();
       socket.disconnect();
     };
@@ -115,23 +259,24 @@ export default function App() {
 
   const joinGame = () => {
     if (joinPendingRef.current) return;
+    intentionalDisconnectRef.current = false;
     gameAudio.unlock();
     gameAudio.ui();
     const trimmed = name.trim();
     if (trimmed.length < 2) {
-      setJoinError('Pick a callsign with at least 2 characters.');
+      setJoinError("Pick a callsign with at least 2 characters.");
       return;
     }
-    localStorage.setItem('om-name', trimmed);
-    localStorage.setItem('om-color', color);
+    localStorage.setItem("om-name", trimmed);
+    localStorage.setItem("om-color", color);
     joinPendingRef.current = true;
     setJoinPending(true);
-    setJoinError('');
+    setJoinError("");
     gameAudio.lobbyMusic();
-    socket.emit('join', {
+    socket.emit("join", {
       name: trimmed,
       color,
-      reconnectToken: localStorage.getItem('om-reconnect-token') || undefined,
+      reconnectToken: localStorage.getItem("om-reconnect-token") || undefined,
     });
   };
 
@@ -140,21 +285,29 @@ export default function App() {
       setJoinError(SERVER_CONFIG_ERROR);
       return;
     }
-    setJoinError('Reconnecting to the backend...');
+    setJoinError("Reconnecting to the backend...");
     if (!socket.connected) socket.connect();
   }, [socket]);
 
-  const sendHostAction = useCallback((payload: Omit<HostActionPayload, 'secret'> & { secret: string }) => {
-    socket.emit('hostAction', payload);
-  }, [socket]);
+  const sendHostAction = useCallback(
+    (payload: Omit<HostActionPayload, "secret"> & { secret: string }) => {
+      socket.emit("hostAction", payload);
+    },
+    [socket],
+  );
 
   const leaveToJoin = useCallback(() => {
+    intentionalDisconnectRef.current = true;
+    joinedRef.current = false;
+    sessionRef.current = null;
+    localStorage.removeItem("om-reconnect-token");
     gameAudio.stopMusic();
     setJoined(false);
     setSession(null);
     setSnapshot(null);
     setNotice(null);
-    setJoinError('');
+    setJoinError("");
+    setConnectionState("connecting");
     joinPendingRef.current = false;
     setJoinPending(false);
     socket.disconnect();
@@ -182,17 +335,33 @@ export default function App() {
   const phase: MatchPhase = snapshot?.phase || session.phase;
   const isHost = Boolean(snapshot?.hostId === session.id || session.isHost);
 
-  if (phase === 'LOBBY') {
-    return <LobbyScreen snapshot={snapshot} session={session} isHost={isHost} notice={notice} onHostAction={sendHostAction} onLeave={leaveToJoin} />;
+  if (phase === "LOBBY") {
+    return (
+      <LobbyScreen
+        snapshot={snapshot}
+        session={session}
+        isHost={isHost}
+        notice={notice}
+        onHostAction={sendHostAction}
+        onLeave={leaveToJoin}
+      />
+    );
   }
-  if (phase === 'RESULTS') {
-    return <ResultsScreen snapshot={snapshot} isHost={isHost} onHostAction={sendHostAction} />;
+  if (phase === "RESULTS") {
+    return (
+      <ResultsScreen
+        snapshot={snapshot}
+        isHost={isHost}
+        onHostAction={sendHostAction}
+      />
+    );
   }
   return (
     <GameScreen
       socket={socket}
       snapshot={snapshot}
       session={session}
+      connectionState={connectionState}
       isHost={isHost}
       onHostAction={sendHostAction}
       onLeave={leaveToJoin}
@@ -202,8 +371,15 @@ export default function App() {
 }
 
 function JoinScreen(props: {
-  connected: boolean; name: string; setName: (value: string) => void; color: string; setColor: (value: string) => void;
-  onJoin: () => void; onRetry: () => void; joining: boolean; error: string;
+  connected: boolean;
+  name: string;
+  setName: (value: string) => void;
+  color: string;
+  setColor: (value: string) => void;
+  onJoin: () => void;
+  onRetry: () => void;
+  joining: boolean;
+  error: string;
 }) {
   return (
     <main className="screen-shell join-shell">
@@ -216,83 +392,416 @@ function JoinScreen(props: {
         <h1>LENDZONE</h1>
         <p className="hero-copy">Clock out. Lock in. Own the front line.</p>
         <div className="join-form">
-          <label className="field-label" htmlFor="callsign">CALLSIGN</label>
-          <input id="callsign" maxLength={18} value={props.name} onChange={(event) => props.setName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); props.onJoin(); } }} placeholder="e.g. Spreadsheet Samurai" autoFocus />
+          <label className="field-label" htmlFor="callsign">
+            CALLSIGN
+          </label>
+          <input
+            id="callsign"
+            maxLength={18}
+            value={props.name}
+            onChange={(event) => props.setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                props.onJoin();
+              }
+            }}
+            placeholder="e.g. Spreadsheet Samurai"
+            autoFocus
+          />
           <label className="field-label">SIGNAL COLOR</label>
           <div className="color-row">
-            {COLORS.map((candidate) => <button aria-label={`Choose ${candidate}`} className={`color-swatch ${props.color === candidate ? 'selected' : ''}`} style={{ background: candidate }} key={candidate} onClick={() => props.setColor(candidate)} />)}
+            {COLORS.map((candidate) => (
+              <button
+                aria-label={`Choose ${candidate}`}
+                className={`color-swatch ${props.color === candidate ? "selected" : ""}`}
+                style={{ background: candidate }}
+                key={candidate}
+                onClick={() => props.setColor(candidate)}
+              />
+            ))}
           </div>
-          <button className="primary-button" onClick={props.onJoin} disabled={!props.connected || props.joining}>
-            {props.joining ? 'JOINING...' : props.connected ? 'ENTER THE ARENA' : 'CONNECTING...'} <span>↗</span>
+          <button
+            className="primary-button"
+            onClick={props.onJoin}
+            disabled={!props.connected || props.joining}
+          >
+            {props.joining
+              ? "JOINING..."
+              : props.connected
+                ? "ENTER THE ARENA"
+                : "CONNECTING..."}{" "}
+            <span>↗</span>
           </button>
-          {!props.connected && <button className="text-button connection-retry" onClick={props.onRetry}>RETRY CONNECTION</button>}
+          {!props.connected && (
+            <button
+              className="text-button connection-retry"
+              onClick={props.onRetry}
+            >
+              RETRY CONNECTION
+            </button>
+          )}
           {props.error && <div className="form-error">{props.error}</div>}
         </div>
-        <div className="join-footnote"><span className="status-dot" /> No account. No install. Share the link and play.</div>
+        <div className="join-footnote">
+          <span className="status-dot" /> No account. No install. Share the link
+          and play.
+        </div>
       </section>
       <div className="join-aside">
-        <div className="aside-card"><span>01</span><strong>RUN &amp; GUN</strong><p>Arrow keys move and turn. X fires. Shift boosts. Mouse controls are also supported.</p></div>
-        <div className="aside-card"><span>02</span><strong>OWN THE ELEVATION</strong><p>Catwalks, open lanes, and vertical routes. Keep moving and control the sight lines.</p></div>
-        <div className="aside-card"><span>03</span><strong>OWN THE FRONT</strong><p>Fast respawns. Five minute rounds. Highest score earns the Lendzone crown.</p></div>
+        <div className="aside-card">
+          <span>01</span>
+          <strong>RUN &amp; GUN</strong>
+          <p>
+            Arrow keys move and turn. X fires. Shift boosts. Mouse controls are
+            also supported.
+          </p>
+        </div>
+        <div className="aside-card">
+          <span>02</span>
+          <strong>OWN THE ELEVATION</strong>
+          <p>
+            Catwalks, open lanes, and vertical routes. Keep moving and control
+            the sight lines.
+          </p>
+        </div>
+        <div className="aside-card">
+          <span>03</span>
+          <strong>OWN THE FRONT</strong>
+          <p>
+            Fast respawns. Five minute rounds. Highest score earns the Lendzone
+            crown.
+          </p>
+        </div>
       </div>
     </main>
   );
 }
 
-function LobbyScreen({ snapshot, session, isHost, notice, onHostAction, onLeave }: {
-  snapshot: GameSnapshot | null; session: SessionPayload; isHost: boolean;
-  notice: Notice | null; onHostAction: (payload: HostActionPayload) => void; onLeave: () => void;
+function LobbyScreen({
+  snapshot,
+  session,
+  isHost,
+  notice,
+  onHostAction,
+  onLeave,
+}: {
+  snapshot: GameSnapshot | null;
+  session: SessionPayload;
+  isHost: boolean;
+  notice: Notice | null;
+  onHostAction: (payload: HostActionPayload) => void;
+  onLeave: () => void;
 }) {
-  const [secret, setSecret] = useState('');
+  const [secret, setSecret] = useState("");
   const [duration, setDuration] = useState(300);
-  const [capacity, setCapacity] = useState(snapshot?.maxPlayers || session.maxPlayers);
+  const [capacity, setCapacity] = useState(
+    snapshot?.maxPlayers || session.maxPlayers,
+  );
   const [showHost, setShowHost] = useState(false);
   const players = snapshot?.players || [];
   const canDeploy = isHost && players.length >= 2;
   const start = () => {
     if (!canDeploy) return;
-    onHostAction({ secret, action: 'duration', durationSeconds: duration });
-    onHostAction({ secret, action: 'capacity', capacity });
-    onHostAction({ secret, action: 'start' });
+    onHostAction({ secret, action: "duration", durationSeconds: duration });
+    onHostAction({ secret, action: "capacity", capacity });
+    onHostAction({ secret, action: "start" });
   };
   return (
     <main className="screen-shell lobby-shell">
-      <header className="lobby-header"><div className="mini-brand"><span>✦</span> LENDZONE</div><div className="connection-pill"><span className="status-dot" /> LIVE ROOM <strong>{players.length}/{snapshot?.maxPlayers || session.maxPlayers}</strong></div><button className="ghost-button" onClick={onLeave}>LEAVE</button></header>
-      <section className="lobby-content">
-        <div className="lobby-title"><span className="eyebrow">OPERATION: LENDZONE FRONT</span><h2>Squad up.</h2><p>Waiting for the owner to deploy the fireteam<span className="blink">_</span></p></div>
-        <div className="lobby-grid">
-          <div className="panel-glass roster-panel"><div className="panel-heading"><span>FIRETEAM // {players.length}</span><span className="live-label">● ONLINE</span></div><div className="roster-list">{players.length === 0 ? <div className="empty-roster">Your squad will appear here.</div> : players.map((player, index) => <div className="roster-row" key={player.id}><span className="roster-index">{String(index + 1).padStart(2, '0')}</span><span className="roster-avatar" style={{ background: player.color }}>{player.name.slice(0, 1).toUpperCase()}</span><strong>{player.name}</strong>{player.id === snapshot?.hostId && <span className="host-tag">HOST</span>}<span className="roster-ready">READY</span></div>)}</div></div>
-          <div className="panel-glass briefing-panel"><div className="panel-heading">MISSION BRIEFING</div><div className="briefing-row"><span>MODE</span><strong>FREE-FOR-ALL</strong></div><div className="briefing-row"><span>ROUND</span><strong>{Math.round((duration || 300) / 60)} MINUTES</strong></div><div className="briefing-row"><span>DEPLOYMENT</span><strong>{capacity} OPERATIVES</strong></div><div className="briefing-row"><span>MAP</span><strong>LENDZONE OUTPOST</strong></div><div className="briefing-tip">Tip: jetpack fuel refills while your boots are on a platform. Use the catwalks and open lanes to break sight lines.</div></div>
+      <header className="lobby-header">
+        <div className="mini-brand">
+          <span>✦</span> LENDZONE
         </div>
-        <div className="lobby-actions"><button className="primary-button wide-button" disabled={isHost && !canDeploy} onClick={() => isHost ? start() : setShowHost(true)}>{isHost ? (canDeploy ? 'START THE ROUND' : 'WAITING FOR 1 MORE PLAYER') : 'I HAVE THE HOST KEY'} <span>→</span></button><div className="lobby-subtext">{isHost ? (canDeploy ? 'You are the room host. Set the pace.' : 'At least 2 operatives are required before deployment.') : 'The host can start the round from this room.'}</div></div>
-        <button className="text-button" onClick={() => setShowHost((current) => !current)}>{showHost ? 'Hide host controls' : 'Open host controls'}</button>
-        {showHost && <HostControls secret={secret} setSecret={setSecret} duration={duration} setDuration={setDuration} capacity={capacity} setCapacity={setCapacity} onAction={onHostAction} isHost={isHost} playerCount={players.length} />}
-        {notice && <div className={`notice-toast lobby-notice ${notice.type}`}>{notice.message}</div>}
+        <div className="connection-pill">
+          <span className="status-dot" /> LIVE ROOM{" "}
+          <strong>
+            {players.length}/{snapshot?.maxPlayers || session.maxPlayers}
+          </strong>
+        </div>
+        <button className="ghost-button" onClick={onLeave}>
+          LEAVE
+        </button>
+      </header>
+      <section className="lobby-content">
+        <div className="lobby-title">
+          <span className="eyebrow">OPERATION: LENDZONE FRONT</span>
+          <h2>Squad up.</h2>
+          <p>
+            Waiting for the owner to deploy the fireteam
+            <span className="blink">_</span>
+          </p>
+        </div>
+        <div className="lobby-grid">
+          <div className="panel-glass roster-panel">
+            <div className="panel-heading">
+              <span>FIRETEAM // {players.length}</span>
+              <span className="live-label">● ONLINE</span>
+            </div>
+            <div className="roster-list">
+              {players.length === 0 ? (
+                <div className="empty-roster">Your squad will appear here.</div>
+              ) : (
+                players.map((player, index) => (
+                  <div className="roster-row" key={player.id}>
+                    <span className="roster-index">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <span
+                      className="roster-avatar"
+                      style={{ background: player.color }}
+                    >
+                      {player.name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <strong>{player.name}</strong>
+                    {player.id === snapshot?.hostId && (
+                      <span className="host-tag">HOST</span>
+                    )}
+                    <span className="roster-ready">READY</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <div className="panel-glass briefing-panel">
+            <div className="panel-heading">MISSION BRIEFING</div>
+            <div className="briefing-row">
+              <span>MODE</span>
+              <strong>FREE-FOR-ALL</strong>
+            </div>
+            <div className="briefing-row">
+              <span>ROUND</span>
+              <strong>{Math.round((duration || 300) / 60)} MINUTES</strong>
+            </div>
+            <div className="briefing-row">
+              <span>DEPLOYMENT</span>
+              <strong>{capacity} OPERATIVES</strong>
+            </div>
+            <div className="briefing-row">
+              <span>MAP</span>
+              <strong>LENDZONE OUTPOST</strong>
+            </div>
+            <div className="briefing-tip">
+              Tip: jetpack fuel refills while your boots are on a platform. Use
+              the catwalks and open lanes to break sight lines.
+            </div>
+          </div>
+        </div>
+        <div className="lobby-actions">
+          <button
+            className="primary-button wide-button"
+            disabled={isHost && !canDeploy}
+            onClick={() => (isHost ? start() : setShowHost(true))}
+          >
+            {isHost
+              ? canDeploy
+                ? "START THE ROUND"
+                : "WAITING FOR 1 MORE PLAYER"
+              : "I HAVE THE HOST KEY"}{" "}
+            <span>→</span>
+          </button>
+          <div className="lobby-subtext">
+            {isHost
+              ? canDeploy
+                ? "You are the room host. Set the pace."
+                : "At least 2 operatives are required before deployment."
+              : "The host can start the round from this room."}
+          </div>
+        </div>
+        <button
+          className="text-button"
+          onClick={() => setShowHost((current) => !current)}
+        >
+          {showHost ? "Hide host controls" : "Open host controls"}
+        </button>
+        {showHost && (
+          <HostControls
+            secret={secret}
+            setSecret={setSecret}
+            duration={duration}
+            setDuration={setDuration}
+            capacity={capacity}
+            setCapacity={setCapacity}
+            onAction={onHostAction}
+            isHost={isHost}
+            playerCount={players.length}
+          />
+        )}
+        {notice && (
+          <div className={`notice-toast lobby-notice ${notice.type}`}>
+            {notice.message}
+          </div>
+        )}
       </section>
     </main>
   );
 }
 
-function HostControls({ secret, setSecret, duration, setDuration, capacity, setCapacity, onAction, isHost, playerCount }: {
-  secret: string; setSecret: (value: string) => void; duration: number; setDuration: (value: number) => void; capacity: number; setCapacity: (value: number) => void;
-  onAction: (payload: HostActionPayload) => void; isHost: boolean; playerCount: number;
+function HostControls({
+  secret,
+  setSecret,
+  duration,
+  setDuration,
+  capacity,
+  setCapacity,
+  onAction,
+  isHost,
+  playerCount,
+}: {
+  secret: string;
+  setSecret: (value: string) => void;
+  duration: number;
+  setDuration: (value: number) => void;
+  capacity: number;
+  setCapacity: (value: number) => void;
+  onAction: (payload: HostActionPayload) => void;
+  isHost: boolean;
+  playerCount: number;
 }) {
   const canDeploy = isHost && playerCount >= 2;
-  return <div className="host-controls panel-glass"><div><label className="field-label">OWNER KEY <small>(optional for room host)</small></label><input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Only needed for remote control" /></div><div><label className="field-label">ROUND SECONDS</label><input type="number" min={30} max={1800} value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></div><div><label className="field-label">MAX PLAYERS</label><input type="number" min={2} max={30} value={capacity} onChange={(event) => setCapacity(Number(event.target.value))} /></div><button className="secondary-button" disabled={!canDeploy} onClick={() => { onAction({ secret, action: 'duration', durationSeconds: duration }); onAction({ secret, action: 'capacity', capacity }); onAction({ secret, action: 'start', durationSeconds: duration }); }}>DEPLOY</button><span className="host-help">{isHost ? (canDeploy ? 'Room host verified. Start when everyone is ready.' : 'Add one more operative before deployment.') : 'Enter the owner key to configure the room.'}</span></div>;
+  return (
+    <div className="host-controls panel-glass">
+      <div>
+        <label className="field-label">
+          OWNER KEY <small>(optional for room host)</small>
+        </label>
+        <input
+          type="password"
+          value={secret}
+          onChange={(event) => setSecret(event.target.value)}
+          placeholder="Only needed for remote control"
+        />
+      </div>
+      <div>
+        <label className="field-label">ROUND SECONDS</label>
+        <input
+          type="number"
+          min={30}
+          max={1800}
+          value={duration}
+          onChange={(event) => setDuration(Number(event.target.value))}
+        />
+      </div>
+      <div>
+        <label className="field-label">MAX PLAYERS</label>
+        <input
+          type="number"
+          min={2}
+          max={30}
+          value={capacity}
+          onChange={(event) => setCapacity(Number(event.target.value))}
+        />
+      </div>
+      <button
+        className="secondary-button"
+        disabled={!canDeploy}
+        onClick={() => {
+          onAction({ secret, action: "duration", durationSeconds: duration });
+          onAction({ secret, action: "capacity", capacity });
+          onAction({ secret, action: "start", durationSeconds: duration });
+        }}
+      >
+        DEPLOY
+      </button>
+      <span className="host-help">
+        {isHost
+          ? canDeploy
+            ? "Room host verified. Start when everyone is ready."
+            : "Add one more operative before deployment."
+          : "Enter the owner key to configure the room."}
+      </span>
+    </div>
+  );
 }
 
-function ResultsScreen({ snapshot, isHost, onHostAction }: { snapshot: GameSnapshot | null; isHost: boolean; onHostAction: (payload: HostActionPayload) => void }) {
-  const [secret, setSecret] = useState('');
+function ResultsScreen({
+  snapshot,
+  isHost,
+  onHostAction,
+}: {
+  snapshot: GameSnapshot | null;
+  isHost: boolean;
+  onHostAction: (payload: HostActionPayload) => void;
+}) {
+  const [secret, setSecret] = useState("");
   const leaderboard = snapshot?.leaderboard || [];
   const canRestart = isHost && (snapshot?.playerCount || 0) >= 2;
-  return <main className="screen-shell results-shell"><div className="results-glow" /><div className="eyebrow">ROUND COMPLETE</div><h1>MISSION<br /><span>REPORT</span></h1><p className="results-kicker">The Lendzone arena has a new champion.</p><div className="results-board panel-glass">{leaderboard.slice(0, 10).map((player, index) => <div className={`result-row ${index === 0 ? 'winner' : ''}`} key={player.id}><span className="place">{String(index + 1).padStart(2, '0')}</span><span className="result-dot" style={{ background: player.color }} /><strong>{player.name}</strong><span className="result-kills">{player.kills}<small> KILLS</small></span><span className="result-deaths">{player.deaths}D</span></div>)}</div><div className="results-actions">{isHost ? <><input className="secret-inline" type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Owner key" /><button className="primary-button" disabled={!canRestart} onClick={() => onHostAction({ secret, action: 'restart' })}>{canRestart ? 'START ANOTHER ROUND' : 'WAITING FOR 1 MORE PLAYER'} <span>↗</span></button></> : <div className="lobby-subtext">Waiting for the owner to queue the next round.</div>}</div></main>;
+  return (
+    <main className="screen-shell results-shell">
+      <div className="results-glow" />
+      <div className="eyebrow">ROUND COMPLETE</div>
+      <h1>
+        MISSION
+        <br />
+        <span>REPORT</span>
+      </h1>
+      <p className="results-kicker">The Lendzone arena has a new champion.</p>
+      <div className="results-board panel-glass">
+        {leaderboard.slice(0, 10).map((player, index) => (
+          <div
+            className={`result-row ${index === 0 ? "winner" : ""}`}
+            key={player.id}
+          >
+            <span className="place">{String(index + 1).padStart(2, "0")}</span>
+            <span className="result-dot" style={{ background: player.color }} />
+            <strong>{player.name}</strong>
+            <span className="result-kills">
+              {player.kills}
+              <small> KILLS</small>
+            </span>
+            <span className="result-deaths">{player.deaths}D</span>
+          </div>
+        ))}
+      </div>
+      <div className="results-actions">
+        {isHost ? (
+          <>
+            <input
+              className="secret-inline"
+              type="password"
+              value={secret}
+              onChange={(event) => setSecret(event.target.value)}
+              placeholder="Owner key"
+            />
+            <button
+              className="primary-button"
+              disabled={!canRestart}
+              onClick={() => onHostAction({ secret, action: "restart" })}
+            >
+              {canRestart ? "START ANOTHER ROUND" : "WAITING FOR 1 MORE PLAYER"}{" "}
+              <span>↗</span>
+            </button>
+          </>
+        ) : (
+          <div className="lobby-subtext">
+            Waiting for the owner to queue the next round.
+          </div>
+        )}
+      </div>
+    </main>
+  );
 }
 
-function GameScreen({ socket, snapshot, session, isHost, onHostAction, onLeave, notice }: {
-  socket: Socket; snapshot: GameSnapshot | null; session: SessionPayload; isHost: boolean;
-  onHostAction: (payload: HostActionPayload) => void; onLeave: () => void; notice: Notice | null;
+function GameScreen({
+  socket,
+  snapshot,
+  session,
+  connectionState,
+  isHost,
+  onHostAction,
+  onLeave,
+  notice,
+}: {
+  socket: Socket;
+  snapshot: GameSnapshot | null;
+  session: SessionPayload;
+  connectionState: ConnectionState;
+  isHost: boolean;
+  onHostAction: (payload: HostActionPayload) => void;
+  onLeave: () => void;
+  notice: Notice | null;
 }) {
-  const [secret, setSecret] = useState('');
+  const [secret, setSecret] = useState("");
   const [showControls, setShowControls] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
@@ -301,64 +810,253 @@ function GameScreen({ socket, snapshot, session, isHost, onHostAction, onLeave, 
   }, []);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen((current) => !current);
+      if (event.key === "Escape") setMenuOpen((current) => !current);
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-  return <main className="game-shell"><CanvasGame socket={socket} snapshot={snapshot} localId={session.id} /><GameHud snapshot={snapshot} localId={session.id} isHost={isHost} secret={secret} setSecret={setSecret} onHostAction={onHostAction} /><button className="game-menu-toggle" onClick={() => setMenuOpen((current) => !current)}>{menuOpen ? 'CLOSE' : 'MENU'}</button>{showControls && <ControlsBrief />}{menuOpen && <GameMenu isHost={isHost} secret={secret} setSecret={setSecret} onHostAction={onHostAction} onClose={() => setMenuOpen(false)} onLeave={onLeave} />}{notice && <div className={`notice-toast ${notice.type}`}>{notice.message}</div>}</main>;
+  return (
+    <main className="game-shell">
+      <CanvasGame socket={socket} snapshot={snapshot} localId={session.id} />
+      <GameHud
+        snapshot={snapshot}
+        localId={session.id}
+        isHost={isHost}
+        secret={secret}
+        setSecret={setSecret}
+        onHostAction={onHostAction}
+      />
+      <button
+        className="game-menu-toggle"
+        onClick={() => setMenuOpen((current) => !current)}
+      >
+        {menuOpen ? "CLOSE" : "MENU"}
+      </button>
+      {showControls && <ControlsBrief />}
+      {connectionState !== "connected" && (
+        <div className="connection-banner">
+          {connectionState === "reconnecting"
+            ? "RECONNECTING..."
+            : "BACKEND CONNECTION LOST"}
+        </div>
+      )}
+      {menuOpen && (
+        <GameMenu
+          isHost={isHost}
+          secret={secret}
+          setSecret={setSecret}
+          onHostAction={onHostAction}
+          onClose={() => setMenuOpen(false)}
+          onLeave={onLeave}
+        />
+      )}
+      {notice && (
+        <div className={`notice-toast ${notice.type}`}>{notice.message}</div>
+      )}
+    </main>
+  );
 }
 
-function GameMenu({ isHost, secret, setSecret, onHostAction, onClose, onLeave }: {
-  isHost: boolean; secret: string; setSecret: (value: string) => void;
-  onHostAction: (payload: HostActionPayload) => void; onClose: () => void; onLeave: () => void;
+function GameMenu({
+  isHost,
+  secret,
+  setSecret,
+  onHostAction,
+  onClose,
+  onLeave,
+}: {
+  isHost: boolean;
+  secret: string;
+  setSecret: (value: string) => void;
+  onHostAction: (payload: HostActionPayload) => void;
+  onClose: () => void;
+  onLeave: () => void;
 }) {
-  return <div className="game-menu-backdrop">
-    <section className="game-menu panel-glass" role="dialog" aria-modal="true" aria-label="Game menu">
-      <div className="controls-brief-title">LENDZONE // MENU</div>
-      <h2>Mission menu</h2>
-      <p>Leave the match or reopen the lobby for a fresh fireteam.</p>
-      <div className="game-menu-actions">
-        <button className="secondary-button" onClick={onClose}>RESUME MATCH</button>
-        {isHost && <>
-          <input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Owner key (optional)" />
-          <button className="primary-button" onClick={() => onHostAction({ secret, action: 'lobby' })}>RETURN EVERYONE TO LOBBY</button>
-        </>}
-        <button className="menu-leave-button" onClick={onLeave}>QUIT TO JOIN SCREEN</button>
-      </div>
-      <small>Press ESC to close this menu.</small>
-    </section>
-  </div>;
+  return (
+    <div className="game-menu-backdrop">
+      <section
+        className="game-menu panel-glass"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Game menu"
+      >
+        <div className="controls-brief-title">LENDZONE // MENU</div>
+        <h2>Mission menu</h2>
+        <p>Leave the match or reopen the lobby for a fresh fireteam.</p>
+        <div className="game-menu-actions">
+          <button className="secondary-button" onClick={onClose}>
+            RESUME MATCH
+          </button>
+          {isHost && (
+            <>
+              <input
+                type="password"
+                value={secret}
+                onChange={(event) => setSecret(event.target.value)}
+                placeholder="Owner key (optional)"
+              />
+              <button
+                className="primary-button"
+                onClick={() => onHostAction({ secret, action: "lobby" })}
+              >
+                RETURN EVERYONE TO LOBBY
+              </button>
+            </>
+          )}
+          <button className="menu-leave-button" onClick={onLeave}>
+            QUIT TO JOIN SCREEN
+          </button>
+        </div>
+        <small>Press ESC to close this menu.</small>
+      </section>
+    </div>
+  );
 }
 
 function ControlsBrief() {
-  return <aside className="controls-brief panel-glass" aria-label="Game controls">
-    <div className="controls-brief-title">CONTROLS // 10 SEC</div>
-    <div className="controls-grid">
-      <div className="control-row"><kbd>← →</kbd><span>MOVE / TURN</span></div>
-      <div className="control-row"><kbd>↑</kbd><span>JUMP + JETPACK</span></div>
-      <div className="control-row"><kbd>↓</kbd><span>AIM DOWN</span></div>
-      <div className="control-row"><kbd>X</kbd><span>FIRE</span></div>
-      <div className="control-row"><kbd>SHIFT</kbd><span>BOOST (ALT)</span></div>
-      <div className="control-row"><kbd>MOUSE</kbd><span>AIM / FIRE</span></div>
-      <div className="control-row"><kbd>R</kbd><span>RELOAD</span></div>
-    </div>
-  </aside>;
+  return (
+    <aside className="controls-brief panel-glass" aria-label="Game controls">
+      <div className="controls-brief-title">CONTROLS // 10 SEC</div>
+      <div className="controls-grid">
+        <div className="control-row">
+          <kbd>← →</kbd>
+          <span>MOVE / TURN</span>
+        </div>
+        <div className="control-row">
+          <kbd>↑</kbd>
+          <span>JUMP + JETPACK</span>
+        </div>
+        <div className="control-row">
+          <kbd>↓</kbd>
+          <span>AIM DOWN</span>
+        </div>
+        <div className="control-row">
+          <kbd>X</kbd>
+          <span>FIRE</span>
+        </div>
+        <div className="control-row">
+          <kbd>SHIFT</kbd>
+          <span>BOOST (ALT)</span>
+        </div>
+        <div className="control-row">
+          <kbd>MOUSE</kbd>
+          <span>AIM / FIRE</span>
+        </div>
+        <div className="control-row">
+          <kbd>R</kbd>
+          <span>RELOAD</span>
+        </div>
+      </div>
+    </aside>
+  );
 }
 
-function GameHud({ snapshot, localId, isHost, secret, setSecret, onHostAction }: {
-  snapshot: GameSnapshot | null; localId: string; isHost: boolean; secret: string; setSecret: (value: string) => void; onHostAction: (payload: HostActionPayload) => void;
+function GameHud({
+  snapshot,
+  localId,
+  isHost,
+  secret,
+  setSecret,
+  onHostAction,
+}: {
+  snapshot: GameSnapshot | null;
+  localId: string;
+  isHost: boolean;
+  secret: string;
+  setSecret: (value: string) => void;
+  onHostAction: (payload: HostActionPayload) => void;
 }) {
   const localPlayer = snapshot?.players.find((player) => player.id === localId);
   const timerSeconds = Math.ceil((snapshot?.timeRemaining || 0) / 1000);
-  const timer = `${Math.floor(timerSeconds / 60).toString().padStart(2, '0')}:${(timerSeconds % 60).toString().padStart(2, '0')}`;
-  return <>
-    <div className="hud-top"><div className="hud-brand">✦ <span>LENDZONE</span></div><div className={`match-clock ${snapshot?.phase === 'COUNTDOWN' ? 'countdown-clock' : ''}`}>{snapshot?.phase === 'COUNTDOWN' ? snapshot.countdown : timer}</div><div className="hud-count"><span className="status-dot" /> {snapshot?.playerCount || 0}/{snapshot?.maxPlayers || 30} IN ARENA</div></div>
-    <div className="leaderboard hud-panel"><div className="hud-panel-title">TOP OPERATIVES</div>{(snapshot?.leaderboard || []).slice(0, 5).map((entry, index) => <div className={`leader-row ${entry.id === localId ? 'local' : ''}`} key={entry.id}><span>{index + 1}</span><i style={{ background: entry.color }} /><strong>{entry.name}</strong><b>{entry.kills}</b></div>)}</div>
-    <div className="kill-feed">{(snapshot?.killFeed || []).slice(0, 4).map((item) => <div key={item.id}><strong>{item.killer}</strong><span> eliminated </span><strong>{item.victim}</strong></div>)}</div>
-    <div className="player-status hud-panel"><div className="status-line"><span>HEALTH</span><strong>{Math.max(0, localPlayer?.hp || 0)}</strong></div><div className="meter health-meter"><i style={{ width: `${Math.max(0, localPlayer?.hp || 0)}%` }} /></div><div className="status-line fuel-label"><span>JETPACK FUEL</span><strong>{Math.round(localPlayer?.fuel || 0)}%</strong></div><div className="meter fuel-meter"><i style={{ width: `${Math.max(0, localPlayer?.fuel || 0)}%` }} /></div></div>
-    <div className="ammo-status hud-panel"><div className="ammo-number">{localPlayer?.ammo ?? 0}<small>/{localPlayer?.magazineSize ?? 30}</small></div><div className="ammo-label">{localPlayer?.ammo === 0 ? 'PRESS R TO RELOAD' : 'RIFLE // AUTO'}</div></div>
-    {snapshot?.phase === 'COUNTDOWN' && <div className="countdown-banner"><span>ROUND STARTS IN</span><strong>{snapshot.countdown}</strong></div>}
-    {isHost && <div className="in-game-host"><input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Host key" /><button onClick={() => onHostAction({ secret, action: 'pause' })}>{snapshot?.paused ? 'RESUME' : 'PAUSE'}</button><button onClick={() => onHostAction({ secret, action: 'end' })}>END</button></div>}
-  </>;
+  const timer = `${Math.floor(timerSeconds / 60)
+    .toString()
+    .padStart(2, "0")}:${(timerSeconds % 60).toString().padStart(2, "0")}`;
+  return (
+    <>
+      <div className="hud-top">
+        <div className="hud-brand">
+          ✦ <span>LENDZONE</span>
+        </div>
+        <div
+          className={`match-clock ${snapshot?.phase === "COUNTDOWN" ? "countdown-clock" : ""}`}
+        >
+          {snapshot?.phase === "COUNTDOWN" ? snapshot.countdown : timer}
+        </div>
+        <div className="hud-count">
+          <span className="status-dot" /> {snapshot?.playerCount || 0}/
+          {snapshot?.maxPlayers || 30} IN ARENA
+        </div>
+      </div>
+      <div className="leaderboard hud-panel">
+        <div className="hud-panel-title">TOP OPERATIVES</div>
+        {(snapshot?.leaderboard || []).slice(0, 5).map((entry, index) => (
+          <div
+            className={`leader-row ${entry.id === localId ? "local" : ""}`}
+            key={entry.id}
+          >
+            <span>{index + 1}</span>
+            <i style={{ background: entry.color }} />
+            <strong>{entry.name}</strong>
+            <b>{entry.kills}</b>
+          </div>
+        ))}
+      </div>
+      <div className="kill-feed">
+        {(snapshot?.killFeed || []).slice(0, 4).map((item) => (
+          <div key={item.id}>
+            <strong>{item.killer}</strong>
+            <span> eliminated </span>
+            <strong>{item.victim}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="player-status hud-panel">
+        <div className="status-line">
+          <span>HEALTH</span>
+          <strong>{Math.max(0, localPlayer?.hp || 0)}</strong>
+        </div>
+        <div className="meter health-meter">
+          <i style={{ width: `${Math.max(0, localPlayer?.hp || 0)}%` }} />
+        </div>
+        <div className="status-line fuel-label">
+          <span>JETPACK FUEL</span>
+          <strong>{Math.round(localPlayer?.fuel || 0)}%</strong>
+        </div>
+        <div className="meter fuel-meter">
+          <i style={{ width: `${Math.max(0, localPlayer?.fuel || 0)}%` }} />
+        </div>
+      </div>
+      <div className="ammo-status hud-panel">
+        <div className="ammo-number">
+          {localPlayer?.ammo ?? 0}
+          <small>/{localPlayer?.magazineSize ?? 30}</small>
+        </div>
+        <div className="ammo-label">
+          {localPlayer?.ammo === 0 ? "PRESS R TO RELOAD" : "RIFLE // AUTO"}
+        </div>
+      </div>
+      {snapshot?.phase === "COUNTDOWN" && (
+        <div className="countdown-banner">
+          <span>ROUND STARTS IN</span>
+          <strong>{snapshot.countdown}</strong>
+        </div>
+      )}
+      {isHost && (
+        <div className="in-game-host">
+          <input
+            type="password"
+            value={secret}
+            onChange={(event) => setSecret(event.target.value)}
+            placeholder="Host key"
+          />
+          <button onClick={() => onHostAction({ secret, action: "pause" })}>
+            {snapshot?.paused ? "RESUME" : "PAUSE"}
+          </button>
+          <button onClick={() => onHostAction({ secret, action: "end" })}>
+            END
+          </button>
+        </div>
+      )}
+    </>
+  );
 }
