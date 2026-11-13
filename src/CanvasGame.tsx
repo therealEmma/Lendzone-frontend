@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Socket } from 'socket.io-client';
-import { GameSnapshot, InputCommand, PLATFORM_LAYOUT, PlayerSnapshot, WORLD } from './shared/types';
+import { GameSnapshot, InputCommand, PLATFORM_LAYOUT, PlayerSnapshot, ProjectileSnapshot, WORLD } from './shared/types';
 import { gameAudio } from './audio';
 
 interface MobileInput {
@@ -15,6 +15,8 @@ interface MobileInput {
 }
 
 const EMPTY_MOBILE: MobileInput = { left: false, right: false, jump: false, jetpack: false, shoot: false, shootPulse: 0, aimAngle: 0, aimAngleSet: false };
+type MobileTap = 'left' | 'right' | 'jump' | 'jetpack' | 'shoot';
+const EMPTY_MOBILE_TAPS: Record<MobileTap, boolean> = { left: false, right: false, jump: false, jetpack: false, shoot: false };
 
 interface AudioState {
   projectileIds: Set<number>;
@@ -33,10 +35,12 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
   const snapshotRef = useRef<GameSnapshot | null>(snapshot);
   const inputRef = useRef<InputCommand>({ seq: 0, left: false, right: false, jump: false, jetpack: false, shoot: false, reload: false, aimAngle: 0 });
   const mobileRef = useRef<MobileInput>({ ...EMPTY_MOBILE });
+  const mobileTapRef = useRef<Record<MobileTap, boolean>>({ ...EMPTY_MOBILE_TAPS });
   const keysRef = useRef(new Set<string>());
   const mouseRef = useRef({ x: 0, y: 0, down: false, active: false });
   const seqRef = useRef(0);
-  const visualRef = useRef(new Map<string, { x: number; y: number; last: number }>());
+  const visualRef = useRef(new Map<string, { x: number; y: number }>());
+  const projectileVisualRef = useRef(new Map<number, ProjectileSnapshot & { receivedAt: number }>());
   const cameraRef = useRef({ x: 1200, y: 600, zoom: 1 });
   const audioRef = useRef<AudioState>({ projectileIds: new Set<number>(), phase: 'LOBBY', countdown: 0, lastHp: WORLD.playerMaxHp, lastKills: 0, lastAmmo: WORLD.magazineSize, lastShotAt: 0, lastJump: false, lastBoostAt: 0 });
 
@@ -74,6 +78,15 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
   }, [snapshot, localId]);
 
   useEffect(() => {
+    const onShot = (shot: ProjectileSnapshot) => {
+      if (shot.ownerId === localId) return;
+      projectileVisualRef.current.set(shot.id, { ...shot, receivedAt: performance.now() });
+    };
+    socket.on('shot', onShot);
+    return () => { socket.off('shot', onShot); projectileVisualRef.current.clear(); };
+  }, [socket, localId]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -93,7 +106,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
     };
     const onPointerDown = (event: globalThis.PointerEvent) => { gameAudio.unlock(); canvas.focus({ preventScroll: true }); if (event.pointerType === 'mouse') mouseRef.current.down = true; };
     const onPointerUp = (event: globalThis.PointerEvent) => { if (event.pointerType === 'mouse') mouseRef.current.down = false; };
-    const release = () => { keysRef.current.clear(); mouseRef.current.down = false; mouseRef.current.active = false; mobileRef.current = { ...EMPTY_MOBILE }; };
+    const release = () => { keysRef.current.clear(); mouseRef.current.down = false; mouseRef.current.active = false; mobileRef.current = { ...EMPTY_MOBILE }; mobileTapRef.current = { ...EMPTY_MOBILE_TAPS }; };
     window.addEventListener('keydown', onKeyDown, { capture: true, passive: false });
     window.addEventListener('keyup', onKeyUp);
     canvas.addEventListener('pointermove', onPointerMove);
@@ -111,6 +124,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
       if (!socket.connected) return;
       const keys = keysRef.current;
       const mobile = mobileRef.current;
+      const mobileTaps = mobileTapRef.current;
       const left = keys.has('arrowleft') || keys.has('a');
       const right = keys.has('arrowright') || keys.has('d');
       const up = keys.has('arrowup') || keys.has('w');
@@ -127,11 +141,11 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
             : inputRef.current.aimAngle;
       const command: InputCommand = {
         seq: ++seqRef.current,
-        left: left || mobile.left,
-        right: right || mobile.right,
-        jump: up || mobile.jump,
-        jetpack: keys.has('arrowup') || keys.has('shift') || mobile.jetpack,
-        shoot: keys.has('x') || mouseRef.current.down || mobile.shoot || mobile.shootPulse > 0,
+        left: left || mobile.left || mobileTaps.left,
+        right: right || mobile.right || mobileTaps.right,
+        jump: up || mobile.jump || mobileTaps.jump,
+        jetpack: keys.has('arrowup') || keys.has('shift') || mobile.jetpack || mobileTaps.jetpack,
+        shoot: keys.has('x') || mouseRef.current.down || mobile.shoot || mobile.shootPulse > 0 || mobileTaps.shoot,
         reload: false,
         aimAngle,
       };
@@ -143,6 +157,7 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
       inputRef.current = command;
       socket.emit('input', command);
       mobileRef.current.shootPulse = 0;
+      mobileTapRef.current = { ...EMPTY_MOBILE_TAPS };
     }, 33);
     return () => window.clearInterval(interval);
   }, [socket]);
@@ -152,14 +167,26 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
     if (!canvas) return;
     const context = canvas.getContext('2d');
     if (!context) return;
+    const staticWorld = document.createElement('canvas');
+    staticWorld.width = WORLD.width;
+    staticWorld.height = WORLD.height;
+    const staticContext = staticWorld.getContext('2d');
+    if (!staticContext) return;
+    drawStaticWorld(staticContext);
     let frame = 0;
     let lastTime = performance.now();
+    let backgroundGradient = context.createLinearGradient(0, 0, 0, canvas.clientHeight);
+    backgroundGradient.addColorStop(0, '#071120');
+    backgroundGradient.addColorStop(1, '#101e30');
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       canvas.width = Math.floor(rect.width * dpr);
       canvas.height = Math.floor(rect.height * dpr);
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      backgroundGradient = context.createLinearGradient(0, 0, 0, rect.height);
+      backgroundGradient.addColorStop(0, '#071120');
+      backgroundGradient.addColorStop(1, '#101e30');
     };
     resize();
     window.addEventListener('resize', resize);
@@ -167,14 +194,14 @@ export default function CanvasGame({ socket, snapshot, localId }: { socket: Sock
       const dt = Math.min(0.05, (time - lastTime) / 1000);
       lastTime = time;
       const current = snapshotRef.current;
-      if (current) drawScene(context, canvas, current, localId, visualRef.current, cameraRef.current, dt, time);
+      if (current) drawScene(context, canvas, current, localId, visualRef.current, projectileVisualRef.current, cameraRef.current, backgroundGradient, staticWorld, dt, time);
       frame = requestAnimationFrame(render);
     };
     frame = requestAnimationFrame(render);
     return () => { cancelAnimationFrame(frame); window.removeEventListener('resize', resize); };
   }, [localId]);
 
-  return <><canvas className="game-canvas" ref={canvasRef} tabIndex={0} aria-label="Lendzone game arena" /><MobileControls onChange={(next) => { mobileRef.current = next; }} /><div className="orientation-lock" role="status" aria-live="polite"><div className="orientation-lock-card"><div className="orientation-lock-icon">↻</div><strong>ROTATE TO LANDSCAPE</strong><span>Turn your phone sideways for the best controls.</span></div></div></>;
+  return <><canvas className="game-canvas" ref={canvasRef} tabIndex={0} aria-label="Lendzone game arena" /><MobileControls onChange={(next) => { mobileRef.current = next; }} onTap={(key) => { if (key === 'reset') mobileTapRef.current = { ...EMPTY_MOBILE_TAPS }; else mobileTapRef.current[key] = true; }} /><div className="orientation-lock" role="status" aria-live="polite"><div className="orientation-lock-card"><div className="orientation-lock-icon">↻</div><strong>ROTATE TO LANDSCAPE</strong><span>Turn your phone sideways for the best controls.</span></div></div></>;
 }
 
 function getMouseAim(snapshot: GameSnapshot | null, localId: string, camera: { x: number; y: number; zoom: number }, x: number, y: number, canvas: HTMLCanvasElement | null): number {
@@ -187,7 +214,7 @@ function getMouseAim(snapshot: GameSnapshot | null, localId: string, camera: { x
   return Math.atan2(y - py, x - px);
 }
 
-function drawScene(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, snapshot: GameSnapshot, localId: string, visuals: Map<string, { x: number; y: number; last: number }>, camera: { x: number; y: number; zoom: number }, dt: number, time: number): void {
+function drawScene(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, snapshot: GameSnapshot, localId: string, visuals: Map<string, { x: number; y: number }>, transientProjectiles: Map<number, ProjectileSnapshot & { receivedAt: number }>, camera: { x: number; y: number; zoom: number }, backgroundGradient: CanvasGradient, staticWorld: HTMLCanvasElement, dt: number, time: number): void {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   const local = snapshot.players.find((player) => player.id === localId);
@@ -201,40 +228,51 @@ function drawScene(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, sna
   camera.x = Math.max(viewWidth / 2, Math.min(WORLD.width - viewWidth / 2, camera.x));
   camera.y = Math.max(viewHeight / 2, Math.min(WORLD.height - viewHeight / 2, camera.y));
 
-  const gradient = ctx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, '#071120'); gradient.addColorStop(1, '#101e30');
-  ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = backgroundGradient; ctx.fillRect(0, 0, width, height);
   ctx.save();
   ctx.translate(width / 2 - camera.x * camera.zoom, height / 2 - camera.y * camera.zoom);
   ctx.scale(camera.zoom, camera.zoom);
-  drawWorldBackdrop(ctx, camera, width, height);
-  drawPlatforms(ctx, snapshot.platforms ?? PLATFORM_LAYOUT);
-  for (const projectile of snapshot.projectiles) drawProjectile(ctx, projectile.x, projectile.y, projectile.vx, projectile.vy);
+  ctx.drawImage(staticWorld, 0, 0);
+  const viewLeft = camera.x - width / (2 * camera.zoom) - 80;
+  const viewRight = camera.x + width / (2 * camera.zoom) + 80;
+  const viewTop = camera.y - height / (2 * camera.zoom) - 80;
+  const viewBottom = camera.y + height / (2 * camera.zoom) + 80;
+  for (const projectile of snapshot.projectiles) {
+    transientProjectiles.delete(projectile.id);
+    if (projectile.x >= viewLeft && projectile.x <= viewRight && projectile.y >= viewTop && projectile.y <= viewBottom) {
+      drawProjectile(ctx, projectile.x, projectile.y, projectile.vx, projectile.vy);
+    }
+  }
+  for (const [id, projectile] of transientProjectiles) {
+    const age = time - projectile.receivedAt;
+    if (age > WORLD.bulletLifetime * 1000) { transientProjectiles.delete(id); continue; }
+    const seconds = Math.max(0, age / 1000);
+    const x = projectile.x + projectile.vx * seconds;
+    const y = projectile.y + projectile.vy * seconds;
+    if (x >= viewLeft && x <= viewRight && y >= viewTop && y <= viewBottom) drawProjectile(ctx, x, y, projectile.vx, projectile.vy);
+  }
+  const now = Date.now();
   for (const player of snapshot.players) {
-    if (!player.alive) continue;
+    if (!player.alive || player.x + WORLD.playerWidth < viewLeft || player.x > viewRight || player.y + WORLD.playerHeight < viewTop || player.y > viewBottom) continue;
     let visual = visuals.get(player.id);
-    if (!visual) { visual = { x: player.x, y: player.y, last: time }; visuals.set(player.id, visual); }
+    if (!visual) { visual = { x: player.x, y: player.y }; visuals.set(player.id, visual); }
     const smoothing = Math.min(1, dt * (player.id === localId ? 20 : 12));
     visual.x += (player.x - visual.x) * smoothing;
     visual.y += (player.y - visual.y) * smoothing;
-    visual.last = time;
-    drawPlayer(ctx, player, visual.x, visual.y, player.id === localId, time);
+    drawPlayer(ctx, player, visual.x, visual.y, player.id === localId, time, now);
   }
   ctx.restore();
   if (snapshot.phase === 'PLAYING') drawCrosshair(ctx, canvas, local, camera);
 }
 
-function drawWorldBackdrop(ctx: CanvasRenderingContext2D, camera: { x: number; y: number; zoom: number }, width: number, height: number): void {
+function drawStaticWorld(ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = '#0b1828'; ctx.fillRect(0, 0, WORLD.width, WORLD.height);
   ctx.strokeStyle = 'rgba(85, 132, 178, 0.08)'; ctx.lineWidth = 1;
-  const startX = Math.floor((camera.x - width / camera.zoom / 2) / 120) * 120;
-  const endX = camera.x + width / camera.zoom / 2;
-  for (let x = startX; x < endX; x += 120) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, WORLD.height); ctx.stroke(); }
-  const startY = Math.floor((camera.y - height / camera.zoom / 2) / 120) * 120;
-  const endY = camera.y + height / camera.zoom / 2;
-  for (let y = startY; y < endY; y += 120) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD.width, y); ctx.stroke(); }
+  for (let x = 0; x <= WORLD.width; x += 120) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, WORLD.height); ctx.stroke(); }
+  for (let y = 0; y <= WORLD.height; y += 120) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD.width, y); ctx.stroke(); }
   ctx.fillStyle = 'rgba(46,196,182,0.05)'; ctx.beginPath(); ctx.arc(420, 440, 260, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = 'rgba(139,92,246,0.06)'; ctx.beginPath(); ctx.arc(1880, 340, 340, 0, Math.PI * 2); ctx.fill();
+  drawPlatforms(ctx, PLATFORM_LAYOUT);
 }
 
 function drawPlatforms(ctx: CanvasRenderingContext2D, platforms: typeof PLATFORM_LAYOUT): void {
@@ -251,22 +289,22 @@ function drawPlatforms(ctx: CanvasRenderingContext2D, platforms: typeof PLATFORM
 function drawProjectile(ctx: CanvasRenderingContext2D, x: number, y: number, vx: number, vy: number): void {
   const length = Math.min(35, Math.hypot(vx, vy) * 0.035);
   const angle = Math.atan2(vy, vx);
-  ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.strokeStyle = '#ffe66d'; ctx.shadowBlur = 12; ctx.shadowColor = '#ffe66d'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-length, 0); ctx.lineTo(7, 0); ctx.stroke(); ctx.restore();
+  ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.strokeStyle = '#ffe66d'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-length, 0); ctx.lineTo(7, 0); ctx.stroke(); ctx.restore();
 }
 
-function drawPlayer(ctx: CanvasRenderingContext2D, player: PlayerSnapshot, x: number, y: number, local: boolean, time: number): void {
+function drawPlayer(ctx: CanvasRenderingContext2D, player: PlayerSnapshot, x: number, y: number, local: boolean, time: number, now: number): void {
   const bob = player.grounded ? Math.sin(time / 90 + x * 0.01) * 1.8 : 0;
   const centerX = x + WORLD.playerWidth / 2;
   const centerY = y + WORLD.playerHeight / 2;
   ctx.save();
-  if (player.spawnProtectedUntil > Date.now()) { ctx.strokeStyle = 'rgba(255,230,109,0.7)'; ctx.lineWidth = 3; ctx.setLineDash([7, 5]); ctx.beginPath(); ctx.arc(centerX, centerY, 42, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
-  if (player.jetpacking) { ctx.fillStyle = '#ffe66d'; ctx.shadowBlur = 14; ctx.shadowColor = '#ff9f1c'; ctx.beginPath(); ctx.moveTo(x + 10, y + 45); ctx.lineTo(x + 18, y + 78 + Math.sin(time / 60) * 8); ctx.lineTo(x + 24, y + 48); ctx.fill(); ctx.shadowBlur = 0; }
+  if (player.spawnProtectedUntil > now) { ctx.strokeStyle = 'rgba(255,230,109,0.7)'; ctx.lineWidth = 3; ctx.setLineDash([7, 5]); ctx.beginPath(); ctx.arc(centerX, centerY, 42, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
+  if (player.jetpacking) { ctx.fillStyle = '#ffe66d'; ctx.beginPath(); ctx.moveTo(x + 10, y + 45); ctx.lineTo(x + 18, y + 78 + Math.sin(time / 60) * 8); ctx.lineTo(x + 24, y + 48); ctx.fill(); }
   ctx.fillStyle = '#182336'; ctx.fillRect(x + 3, y + 24 + bob, 8, 23); ctx.fillRect(x + 31, y + 24 + bob, 8, 23);
   ctx.fillStyle = player.color; ctx.strokeStyle = '#07111e'; ctx.lineWidth = 3; roundedRect(ctx, x + 5, y + 21 + bob, 32, 30, 8); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#f6c6a4'; ctx.beginPath(); ctx.arc(centerX, y + 16 + bob, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#26334b'; ctx.fillRect(x + 8, y + 5 + bob, 27, 7); ctx.fillRect(x + 13, y + 1 + bob, 17, 7);
   const weaponAngle = player.aimAngle;
-  ctx.save(); ctx.translate(centerX, y + 34 + bob); ctx.rotate(weaponAngle); ctx.strokeStyle = '#a9b8cd'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(30, 0); ctx.stroke(); ctx.strokeStyle = '#516279'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(12, 8); ctx.stroke(); if (player.shooting) { ctx.fillStyle = '#ffe66d'; ctx.shadowBlur = 18; ctx.shadowColor = '#ffe66d'; ctx.beginPath(); ctx.moveTo(31, 0); ctx.lineTo(43, -6); ctx.lineTo(39, 0); ctx.lineTo(43, 6); ctx.fill(); } ctx.restore();
+  ctx.save(); ctx.translate(centerX, y + 34 + bob); ctx.rotate(weaponAngle); ctx.strokeStyle = '#a9b8cd'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(30, 0); ctx.stroke(); ctx.strokeStyle = '#516279'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(12, 8); ctx.stroke(); if (player.shooting) { ctx.fillStyle = '#ffe66d'; ctx.beginPath(); ctx.moveTo(31, 0); ctx.lineTo(43, -6); ctx.lineTo(39, 0); ctx.lineTo(43, 6); ctx.fill(); } ctx.restore();
   const barWidth = 52; ctx.fillStyle = 'rgba(2,8,16,0.8)'; ctx.fillRect(centerX - barWidth / 2, y - 19, barWidth, 5); ctx.fillStyle = player.hp > 35 ? '#2ec4b6' : '#ff4d6d'; ctx.fillRect(centerX - barWidth / 2, y - 19, barWidth * (player.hp / player.maxHp), 5);
   ctx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, monospace'; ctx.textAlign = 'center'; ctx.fillStyle = local ? '#ffffff' : 'rgba(229,239,248,0.88)'; ctx.fillText(player.name, centerX, y - 26);
   if (local) { ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(centerX, centerY, 35, 0, Math.PI * 2); ctx.stroke(); }
@@ -284,12 +322,13 @@ function drawCrosshair(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement,
   ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.stroke();
 }
 
-function MobileControls({ onChange }: { onChange: (value: MobileInput) => void }) {
+function MobileControls({ onChange, onTap }: { onChange: (value: MobileInput) => void; onTap: (key: MobileTap | 'reset') => void }) {
   const state = useRef<MobileInput>({ ...EMPTY_MOBILE });
   const [visual, setVisual] = useState({ left: false, right: false, shoot: false, jump: false, jetpack: false });
   const pointers = useRef({ left: null as number | null, right: null as number | null, shoot: null as number | null, jump: null as number | null, jetpack: null as number | null });
   const onChangeRef = useRef(onChange);
-  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  const onTapRef = useRef(onTap);
+  useEffect(() => { onChangeRef.current = onChange; onTapRef.current = onTap; }, [onChange, onTap]);
   const capturePointer = (element: HTMLElement, pointerId: number) => {
     try { element.setPointerCapture(pointerId); } catch { /* The browser may have cancelled the pointer already. */ }
   };
@@ -297,6 +336,7 @@ function MobileControls({ onChange }: { onChange: (value: MobileInput) => void }
     pointers.current = { left: null, right: null, shoot: null, jump: null, jetpack: null };
     state.current = { ...EMPTY_MOBILE };
     setVisual({ left: false, right: false, shoot: false, jump: false, jetpack: false });
+    onTapRef.current('reset');
     onChangeRef.current({ ...EMPTY_MOBILE });
   };
   const releasePointer = (pointerId: number) => {
@@ -349,6 +389,8 @@ function MobileControls({ onChange }: { onChange: (value: MobileInput) => void }
     capturePointer(event.currentTarget, event.pointerId);
     setVisual((current) => ({ ...current, [key]: true }));
     onChange(nextState);
+    // Queue a one-tick command so a quick tap is not lost between 30 Hz input samples.
+    onTapRef.current(key);
   };
   const buttonUp = (key: 'left' | 'right' | 'shoot' | 'jump' | 'jetpack', pointerId: number) => {
     if (pointers.current[key] !== pointerId) return;

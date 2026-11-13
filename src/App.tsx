@@ -9,7 +9,6 @@ import { io, Socket } from "socket.io-client";
 import {
   GameSnapshot,
   HostActionPayload,
-  ProjectileSnapshot,
   SessionPayload,
   MatchPhase,
 } from "./shared/types";
@@ -185,20 +184,6 @@ export default function App() {
         });
     };
     const onSnapshot = (next: GameSnapshot) => setSnapshot(next);
-    const onShot = (shot: ProjectileSnapshot) => {
-      console.debug("[Lendzone] Remote shot received", {
-        projectileId: shot.id,
-        ownerId: shot.ownerId,
-      });
-      setSnapshot((current) =>
-        current &&
-        current.projectiles.some((projectile) => projectile.id === shot.id)
-          ? current
-          : current
-            ? { ...current, projectiles: [...current.projectiles, shot] }
-            : current,
-      );
-    };
     const onNotice = (next: Notice) => {
       setNotice(next);
       window.setTimeout(() => setNotice(null), 3500);
@@ -238,7 +223,6 @@ export default function App() {
     socket.on("connect_error", onConnectError);
     socket.on("session", onSession);
     socket.on("snapshot", onSnapshot);
-    socket.on("shot", onShot);
     socket.on("notice", onNotice);
     socket.on("errorMessage", onError);
     socket.connect();
@@ -249,7 +233,6 @@ export default function App() {
       socket.off("connect_error", onConnectError);
       socket.off("session", onSession);
       socket.off("snapshot", onSnapshot);
-      socket.off("shot", onShot);
       socket.off("notice", onNotice);
       socket.off("errorMessage", onError);
       gameAudio.stopMusic();
