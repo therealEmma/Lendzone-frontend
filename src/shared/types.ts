@@ -133,7 +133,7 @@ export const WORLD = {
   jetpackFuelPerSecond: 34,
   fuelRechargePerSecond: 25,
   tickRate: 30,
-  snapshotRate: 12,
+  snapshotRate: 20,
 } as const;
 
 export const PLATFORM_LAYOUT: Platform[] = [
